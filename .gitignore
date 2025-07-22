@@ -1,0 +1,14 @@
+# Ignore data/output folders
+outputs/
+*.fits
+*.cutout
+*.catalogue
+
+# Ignore large files
+*.pdf
+*.png
+*.jpg
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
