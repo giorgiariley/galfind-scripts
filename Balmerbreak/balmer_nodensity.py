@@ -10,7 +10,7 @@ from astropy.cosmology import FlatLambdaCDM
 from astropy.io import fits
 from astropy.table import Table 
 from scipy.stats import norm
-from run_cat import Austin25_sample
+from Balmerbreak import Austin25_sample
 from scipy.stats import ks_2samp
 from scipy.interpolate import interp1d
 
@@ -73,7 +73,7 @@ for SED_fitter in sample_SED_fitter_arr:
 
 
 # Load Balmer break data
-data = np.loadtxt("balmer_break_outputs/balmer_breaks1.txt", skiprows=1)
+data = np.loadtxt("balmer_break_outputs1/balmer_breaks.txt", skiprows=1)
 balmer_breaks = data[:, 1]            # raw Balmer break values
 valid_balmers = (~np.isnan(balmer_breaks))
 balmer_breaks = balmer_breaks[valid_balmers]
