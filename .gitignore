@@ -3,13 +3,14 @@ outputs/
 *.fits
 *.cutout
 *.catalogue
-*.txt
 
 
 # Ignore large files
 *.pdf
 *.png
 *.jpg
+*.txt
+
 
 # Ignore Python cache files
 __pycache__/
