@@ -3,6 +3,8 @@ outputs/
 *.fits
 *.cutout
 *.catalogue
+*.txt
+
 
 # Ignore large files
 *.pdf
