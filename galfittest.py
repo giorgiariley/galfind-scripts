@@ -43,8 +43,11 @@ cat = Catalogue.pipeline(
         crops = sample(aper_diams[0], SED_fitter_arr[-1].label)
 )
 
+# load sextractor parameters
+cat.load_sextractor_auto_mags()
+cat.load_sextractor_auto_fluxes()
+cat.load_sextractor_kron_radii()
 cat.load_sextractor_Re()
-
 # fit GALFIT
 for band_name in ["F444W"]:
     filt = Filter.from_filt_name(band_name)
