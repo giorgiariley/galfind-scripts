@@ -79,7 +79,7 @@ def stack_mfmtk_outputs(output_dir, output_file=None, file_format='ascii.csv'):
 
 # === Call the function ===
 combined_table = stack_mfmtk_outputs(
-    output_dir='/raid/scratch/work/Griley/GALFIND_WORK/Cutouts/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/0.96as/F444W/data',
+    output_dir='/raid/scratch/work/Griley/GALFIND_WORK/Cutouts/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/1.50as/F444W/data',
     output_file='combined_morfometryka.fits',
     file_format='ascii.csv'
 )
