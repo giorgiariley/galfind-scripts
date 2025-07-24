@@ -109,6 +109,7 @@ for idx, galaxy in enumerate(cat):
         aper = aper_diams[0]
         SED_result = galaxy.aper_phot[aper].SED_results[sample_SED_fitter_arr[-1].label]
         sed_wavs_obs = SED_result.SED.wavs
+        
         z = SED_result.z
         sed_wavs = sed_wavs_obs / (1 + z)  # rest-frame wavelengths
         sed_fluxes = np.array(SED_result.SED.mags)
@@ -133,8 +134,8 @@ for idx, galaxy in enumerate(cat):
         plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f} mag')
         plt.plot(sed_wavs[valid], sed_mags, label='Best-fit SED (Bagpipes)', lw=2)
         plt.xlabel("Rest-frame Wavelength [Å]")
-        # plt.xlim(500, 7000)
-        # plt.ylim(25, 31)
+        plt.xlim(500, 7000)
+        plt.ylim(10, 40)
         plt.ylabel("AbMags")
         plt.gca().invert_yaxis()
         # Highlight 3400–3600 Å region (blue side)
@@ -158,7 +159,7 @@ results_array = np.array(results, dtype=object)
 # Check shape: must be 2D with 3 columns
 if results_array.ndim == 2 and results_array.shape[1] == 3:
     np.savetxt(
-        os.path.join(output_folder, "balmer_breaks.txt"),
+        os.path.join(output_folder, "balmer_breaks1.txt"),
         results_array,
         header="Index    BalmerBreak(mag)    Redshift",
         fmt=["%-8d", "%.4f", "%.4f"]
