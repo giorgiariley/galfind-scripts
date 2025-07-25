@@ -108,8 +108,7 @@ for idx, galaxy in enumerate(cat):
     try:
         aper = aper_diams[0]
         SED_result = galaxy.aper_phot[aper].SED_results[sample_SED_fitter_arr[-1].label]
-        sed_wavs_obs = SED_result.SED.wavs
-        
+        sed_wavs_obs = SED_result.SED.wavs       
         z = SED_result.z
         sed_wavs = sed_wavs_obs / (1 + z)  # rest-frame wavelengths
         sed_fluxes = np.array(SED_result.SED.mags)
