@@ -8,7 +8,9 @@ from galfind import Catalogue, EAZY, SED_code
 from galfind import galfind_logger, Multiple_Mask_Selector,Redshift_Extractor, Multiple_SED_fit_Selector, Min_Instrument_Unmasked_Band_Selector, Unmasked_Band_Selector, Bluewards_LyLim_Non_Detect_Selector, Bluewards_Lya_Non_Detect_Selector, Redwards_Lya_Detect_Selector, Chi_Sq_Lim_Selector, Chi_Sq_Diff_Selector, Robust_zPDF_Selector, Sextractor_Bands_Radius_Selector    
 import matplotlib.pyplot as plt
 import numpy as np
-from galfind import Bagpipes
+from galfind import Bagpipes, useful_funcs_austind as funcs
+
+
 class Austin25_unmasked_criteria(Multiple_Mask_Selector):
 
     def __init__(self):
@@ -99,42 +101,58 @@ os.makedirs(output_folder, exist_ok=True)
 # Loop over all galaxies
 for idx, galaxy in enumerate(cat):
     try:
+        wav_units = u.um
+        mag_units = u.ABmag
         aper = aper_diams[0]
         SED_result_pipes = galaxy.aper_phot[aper].SED_results[sample_SED_fitter_arr[-1].label]
-        sed_wavs_obs_pipes = SED_result_pipes.SED.wavs
+        sed_wavs_obs_pipes = funcs.convert_wav_units(SED_result_pipes.SED.wavs, wav_units)
         z_pipes = SED_result_pipes.z
-        sed_wavs_pipes = sed_wavs_obs_pipes / (1 + z_pipes)  # rest-frame wavelengths
-        sed_fluxes_pipes = np.array(SED_result_pipes.SED.mags)
-        # Skip if all fluxes are non-positive
-        valid_pipes = sed_fluxes_pipes > 0
-        if not np.any(valid_pipes):
+        sed_wavs_pipes = sed_wavs_obs_pipes #/ (1 + z_pipes)  # rest-frame wavelengths
+        sed_fluxes_pipes = SED_result_pipes.SED.mags
+        sed_fluxes_pipes = np.where(sed_fluxes_pipes <= 0, 1e-10 * sed_fluxes_pipes.unit, sed_fluxes_pipes)
+
+        # Check if *all* values are <= 0
+        if np.all(sed_fluxes_pipes <= 0):
+            print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
             continue
 
-        safe_fluxes_pipes = np.clip(sed_fluxes_pipes[valid_pipes], 1e-30, None)
-        sed_mags_pipes = -2.5 * np.log10((safe_fluxes_pipes * 1e-9) / 3631)
-
+        sed_mags_pipes = funcs.convert_mag_units(
+            SED_result_pipes.SED.wavs,
+            sed_fluxes_pipes,
+            mag_units
+        )
         SED_result_EZ = galaxy.aper_phot[aper].SED_results[SED_fitter_arr[-1].label]
-        sed_wavs_obs_EZ = SED_result_EZ.SED.wavs
+        sed_wavs_obs_EZ = funcs.convert_wav_units(SED_result_EZ.SED.wavs, wav_units)
         z_EZ = SED_result_EZ.z
-        sed_wavs_EZ = sed_wavs_obs_EZ / (1 + z_EZ)  # rest-frame wavelengths
-        sed_fluxes_EZ = np.array(SED_result_EZ.SED.mags)
-        # Skip if all fluxes are non-positive
-        valid_EZ = sed_fluxes_EZ > 0
-        if not np.any(valid_EZ):
+        sed_wavs_EZ = sed_wavs_obs_EZ #/ (1 + z_EZ)  # rest-frame wavelengths
+        sed_fluxes_EZ = SED_result_EZ.SED.mags
+        sed_fluxes_EZ = np.where(sed_fluxes_EZ <= 0, 1e-10 * sed_fluxes_EZ.unit, sed_fluxes_EZ)
+        
+        # Check if *all* values are <= 0
+        if np.all(sed_fluxes_EZ <= 0):
+            print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
             continue
 
-        safe_fluxes_EZ = np.clip(sed_fluxes_EZ[valid_EZ], 1e-30, None)
-        sed_mags_EZ = -2.5 * np.log10((safe_fluxes_EZ * 1e-9) / 3631)
+        sed_mags_EZ = funcs.convert_mag_units(
+            SED_result_EZ.SED.wavs,
+            sed_fluxes_EZ,
+            mag_units
+        )
+        # breakpoint()    
+        # fig, ax = plt.subplots()
+        # SED_result_pipes.SED.plot(ax, wav_units = u.um, label='Bagpipes SED')
+        # SED_result_EZ.SED.plot(ax, wav_units = u.um, label='EAZY SED')
+        # ax.set_xlim(0.5, 4.5), ax.set_ylim(30.0, 25.0)
+        # plt.savefig(f"{idx}_test.png")
 
-
+        # breakpoint()
         # Plot rest-frame SED
         plt.figure(figsize=(8, 5))
-        #plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f} mag')
-        plt.plot(sed_wavs_pipes[valid_pipes], sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
-        plt.plot(sed_wavs_EZ[valid_EZ], sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
+        plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
+        plt.plot(sed_wavs_EZ, sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
         plt.xlabel("Rest-frame Wavelength [Å]")
-        plt.xlim(500, 7000)
-        plt.ylim(25, 31)
+        plt.xlim(0.5, 4.5)
+        plt.ylim(25, 30)
         plt.ylabel("AbMags")
         plt.gca().invert_yaxis()
         plt.title(f"Best-fit SED for galaxy {idx} using {sample_SED_fitter_arr[-1].label} at redshift {z_pipes:.2f}")
