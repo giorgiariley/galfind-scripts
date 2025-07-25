@@ -98,71 +98,95 @@ for SED_fitter in sample_SED_fitter_arr:
 output_folder = "overplot_output"
 os.makedirs(output_folder, exist_ok=True)
 
+# Store results
+results = []
+
 # Loop over all galaxies
 for idx, galaxy in enumerate(cat):
-    try:
-        wav_units = u.um
-        mag_units = u.ABmag
-        aper = aper_diams[0]
-        SED_result_pipes = galaxy.aper_phot[aper].SED_results[sample_SED_fitter_arr[-1].label]
-        sed_wavs_obs_pipes = funcs.convert_wav_units(SED_result_pipes.SED.wavs, wav_units)
-        z_pipes = SED_result_pipes.z
-        sed_wavs_pipes = sed_wavs_obs_pipes #/ (1 + z_pipes)  # rest-frame wavelengths
-        sed_fluxes_pipes = SED_result_pipes.SED.mags
-        sed_fluxes_pipes = np.where(sed_fluxes_pipes <= 0, 1e-10 * sed_fluxes_pipes.unit, sed_fluxes_pipes)
+    wav_units = u.um
+    mag_units = u.ABmag
+    aper = aper_diams[0]
+    SED_result_pipes = galaxy.aper_phot[aper].SED_results[sample_SED_fitter_arr[-1].label]
+    sed_wavs_obs_pipes = funcs.convert_wav_units(SED_result_pipes.SED.wavs, wav_units)
+    z_pipes = SED_result_pipes.z
+    sed_wavs_pipes = sed_wavs_obs_pipes / (1 + z_pipes)  # rest-frame wavelengths
+    sed_fluxes_pipes = SED_result_pipes.SED.mags
+    sed_fluxes_pipes = np.where(sed_fluxes_pipes <= 0, 1e-10 * sed_fluxes_pipes.unit, sed_fluxes_pipes)
 
-        # Check if *all* values are <= 0
-        if np.all(sed_fluxes_pipes <= 0):
-            print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
-            continue
-
-        sed_mags_pipes = funcs.convert_mag_units(
-            SED_result_pipes.SED.wavs,
-            sed_fluxes_pipes,
-            mag_units
-        )
-        SED_result_EZ = galaxy.aper_phot[aper].SED_results[SED_fitter_arr[-1].label]
-        sed_wavs_obs_EZ = funcs.convert_wav_units(SED_result_EZ.SED.wavs, wav_units)
-        z_EZ = SED_result_EZ.z
-        sed_wavs_EZ = sed_wavs_obs_EZ #/ (1 + z_EZ)  # rest-frame wavelengths
-        sed_fluxes_EZ = SED_result_EZ.SED.mags
-        sed_fluxes_EZ = np.where(sed_fluxes_EZ <= 0, 1e-10 * sed_fluxes_EZ.unit, sed_fluxes_EZ)
-        
-        # Check if *all* values are <= 0
-        if np.all(sed_fluxes_EZ <= 0):
-            print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
-            continue
-
-        sed_mags_EZ = funcs.convert_mag_units(
-            SED_result_EZ.SED.wavs,
-            sed_fluxes_EZ,
-            mag_units
-        )
-        # breakpoint()    
-        # fig, ax = plt.subplots()
-        # SED_result_pipes.SED.plot(ax, wav_units = u.um, label='Bagpipes SED')
-        # SED_result_EZ.SED.plot(ax, wav_units = u.um, label='EAZY SED')
-        # ax.set_xlim(0.5, 4.5), ax.set_ylim(30.0, 25.0)
-        # plt.savefig(f"{idx}_test.png")
-
-        # breakpoint()
-        # Plot rest-frame SED
-        plt.figure(figsize=(8, 5))
-        plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
-        plt.plot(sed_wavs_EZ, sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
-        plt.xlabel("Rest-frame Wavelength [Å]")
-        plt.xlim(0.5, 4.5)
-        plt.ylim(25, 30)
-        plt.ylabel("AbMags")
-        plt.gca().invert_yaxis()
-        plt.title(f"Best-fit SED for galaxy {idx} using {sample_SED_fitter_arr[-1].label} at redshift {z_pipes:.2f}")
-        plt.grid(True, alpha=0.3)
-        plt.legend()
-        plt.tight_layout()
-        plot_path = os.path.join(output_folder, f"galaxy_{idx:04d}_overplot.png")
-        plt.savefig(plot_path)
-        plt.close()
-    except Exception as e:
-        print(f"Skipped galaxy {idx} due to error: {e}")
+    # Check if *all* values are <= 0
+    if np.all(sed_fluxes_pipes <= 0):
+        print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
         continue
 
+    sed_mags_pipes = funcs.convert_mag_units(
+        SED_result_pipes.SED.wavs,
+        sed_fluxes_pipes,
+        mag_units
+    )
+    SED_result_EZ = galaxy.aper_phot[aper].SED_results[SED_fitter_arr[-1].label]
+    sed_wavs_obs_EZ = funcs.convert_wav_units(SED_result_EZ.SED.wavs, wav_units)
+    z_EZ = SED_result_EZ.z
+    sed_wavs_EZ = sed_wavs_obs_EZ / (1 + z_EZ)  # rest-frame wavelengths
+    sed_fluxes_EZ = SED_result_EZ.SED.mags
+    sed_fluxes_EZ = np.where(sed_fluxes_EZ <= 0, 1e-10 * sed_fluxes_EZ.unit, sed_fluxes_EZ)
+    
+    # Check if *all* values are <= 0
+    if np.all(sed_fluxes_EZ <= 0):
+        print(f"Skipped galaxy {idx} due to all non-positive fluxes in Bagpipes SED")
+        continue
+
+    sed_mags_EZ = funcs.convert_mag_units(
+        SED_result_EZ.SED.wavs,
+        sed_fluxes_EZ,
+        mag_units
+    )
+    # fig, ax = plt.subplots()
+    # SED_result_pipes.SED.plot(ax, wav_units = u.um, label='Bagpipes SED')
+    # SED_result_EZ.SED.plot(ax, wav_units = u.um, label='EAZY SED')
+    # ax.set_xlim(0.5, 4.5), ax.set_ylim(30.0, 25.0)
+    # plt.savefig(f"{idx}_test.png")
+
+    # Balmer break masks
+    blue_mask = (sed_wavs_pipes >= 3400 * u.AA) & (sed_wavs_pipes <= 3600 * u.AA)
+    red_mask  = (sed_wavs_pipes >= 4150 * u.AA) & (sed_wavs_pipes <= 4250 * u.AA)
+
+    blue_median_mag = np.median(sed_mags_pipes[blue_mask])
+    red_median_mag = np.median(sed_mags_pipes[red_mask])
+    balmer_break_mag = blue_median_mag - red_median_mag
+    results.append([idx, balmer_break_mag, z_pipes])
+    # Plot rest-frame SED
+    plt.figure(figsize=(8, 5))
+    plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
+    plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
+    plt.plot(sed_wavs_EZ, sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
+    plt.xlabel("Rest-frame Wavelength (μm)")
+    plt.xlim(0, 0.45)
+    plt.ylim(25, 30)
+    plt.ylabel("AbMags")
+    plt.gca().invert_yaxis()
+    # Highlight 3400–3600 Å region (blue side)
+    plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
+    # Highlight 4150–4250 Å region (red side)
+    plt.axvspan(0.4150, 0.4250, color='red', alpha=0.2, label='4150–4250 Å')
+    plt.title(f"Best-fit SED for galaxy {idx} using Bagpipes at redshift {z_pipes:.2f}")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plot_path = os.path.join(output_folder, 'SED_plots', f"galaxy_{idx:04d}_overplot.png")
+    plt.savefig(plot_path)
+    plt.close()
+
+
+# Save all Balmer break values to text file
+results_array = np.array(results, dtype=object)
+
+# Check shape: must be 2D with 3 columns
+if results_array.ndim == 2 and results_array.shape[1] == 3:
+    np.savetxt(
+        os.path.join(output_folder, "balmer_breaks2.txt"),
+        results_array,
+        header="Index    BalmerBreak(mag)    Redshift",
+        fmt=["%-8d", "%.4f", "%.4f"]
+    )
+else:
+    print(f"Unexpected shape for results_array: {results_array.shape}")
