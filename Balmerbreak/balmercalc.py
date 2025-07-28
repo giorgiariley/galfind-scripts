@@ -117,14 +117,15 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) ->
     plt.figure(figsize=(8, 5))
     plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
     plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Bagpipes SED', lw=2)
+    plt.xlim(0, 0.7)
+    plt.ylim(23, 32)
+    plt.gca().invert_yaxis()
     plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
     plt.axvspan(0.4150, 0.4250, color='red', alpha=0.2, label='4150–4250 Å')
     plt.xlabel("Rest-frame Wavelength (μm)")
     plt.ylabel("AB Mags")
-    plt.gca().invert_yaxis()
-    plt.title(f"Galaxy {idx} @ z={SED_result_pipes.z:.2f}")
+    plt.title(f"Best-fit SED for galaxy {idx} using Bagpipes at redshift {z_pipes:.2f}")
     plt.legend(); plt.tight_layout()
-    plt.xlim(0, 0.7); plt.ylim(23, 32)
     plt.grid(alpha=0.3); plt.savefig(plot_path); plt.close()
 
     return [idx, balmer_break_mag.value, SED_result_pipes.z.value]
