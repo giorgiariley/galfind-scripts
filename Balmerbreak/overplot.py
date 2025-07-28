@@ -147,9 +147,8 @@ for idx, galaxy in enumerate(cat):
     # plt.savefig(f"{idx}_test.png")
 
     # Balmer break masks
-    blue_mask = (sed_wavs_pipes >= 3400 * u.AA) & (sed_wavs_pipes <= 3600 * u.AA)
-    red_mask  = (sed_wavs_pipes >= 4150 * u.AA) & (sed_wavs_pipes <= 4250 * u.AA)
-
+    blue_mask = (sed_wavs_pipes >= 0.3400 * u.um) & (sed_wavs_pipes <= 0.3600 * u.um)
+    red_mask  = (sed_wavs_pipes >= 0.4150 * u.um) & (sed_wavs_pipes <= 0.4250 * u.um)
     blue_median_mag = np.median(sed_mags_pipes[blue_mask])
     red_median_mag = np.median(sed_mags_pipes[red_mask])
     balmer_break_mag = blue_median_mag - red_median_mag
@@ -163,7 +162,7 @@ for idx, galaxy in enumerate(cat):
     plt.xlim(0, 0.7)
     plt.ylim(23, 32)
     plt.ylabel("AbMags")
-    plt.gca().invert_yaxis()
+    # plt.gca().invert_yaxis()
     # Highlight 3400–3600 Å region (blue side)
     plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
     # Highlight 4150–4250 Å region (red side)
@@ -176,17 +175,26 @@ for idx, galaxy in enumerate(cat):
     plt.savefig(plot_path)
     plt.close()
 
+# Debug: Print the results list
+print("Results list before conversion:", results)
 
-# Save all Balmer break values to text file
-results_array = np.array(results, dtype=object)
+# Ensure results is a list of lists with consistent data types
+results = [
+    [int(row[0]), float(row[1].value), float(row[2].value)]  # Extract numerical values
+    for row in results
+]
 
-# Check shape: must be 2D with 3 columns
-if results_array.ndim == 2 and results_array.shape[1] == 3:
-    np.savetxt(
-        os.path.join(output_folder, "balmer_breaks2.txt"),
-        results_array,
-        header="Index    BalmerBreak(mag)    Redshift",
-        fmt=["%-8d", "%.4f", "%.4f"]
-    )
-else:
-    print(f"Unexpected shape for results_array: {results_array.shape}")
+# Convert to a NumPy array
+results_array = np.array(results)
+# Ensure the file is overwritten
+file_path = os.path.join(output_folder, "balmer_breaks2.txt")
+if os.path.exists(file_path):
+    os.remove(file_path)
+
+# Save the results to the text file
+np.savetxt(
+    file_path,
+    results_array,
+    header="Index    BalmerBreak(mag)    Redshift",
+    fmt=["%-8d", "%.4f", "%.4f"]
+)
