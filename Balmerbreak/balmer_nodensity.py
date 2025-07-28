@@ -111,7 +111,7 @@ for SED_fitter in sample_SED_fitter_arr:
 
 
 # Load Balmer break data
-data = np.loadtxt("balmer_break_outputs1/balmer_breaks.txt", skiprows=1)
+data = np.loadtxt("overplot_output/balmer_breaks2.txt", skiprows=1)
 balmer_breaks = data[:, 1]            # raw Balmer break values
 valid_balmers = (~np.isnan(balmer_breaks))
 balmer_breaks = balmer_breaks[valid_balmers]
