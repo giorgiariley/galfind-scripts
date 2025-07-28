@@ -71,8 +71,6 @@ sample_SED_fitter_arr = [
         ),
     ]
 SED_fitter_arr = [
-        # EAZY({"templates": "fsps_larson", "lowz_zmax": 4.0}),
-        # EAZY({"templates": "fsps_larson", "lowz_zmax": 6.0}),
         EAZY({"templates": "fsps_larson", "lowz_zmax": None}),
     ]
 
@@ -162,7 +160,7 @@ for idx, galaxy in enumerate(cat):
     plt.xlim(0, 0.7)
     plt.ylim(23, 32)
     plt.ylabel("AbMags")
-    # plt.gca().invert_yaxis()
+    plt.gca().invert_yaxis()
     # Highlight 3400–3600 Å region (blue side)
     plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
     # Highlight 4150–4250 Å region (red side)
