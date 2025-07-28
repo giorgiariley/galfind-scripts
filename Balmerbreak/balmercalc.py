@@ -16,6 +16,7 @@ from galfind import (
 )
 from galfind.Data import morgan_version_to_dir
 
+#sample selection
 class Austin25_unmasked_criteria(Multiple_Mask_Selector):
     def __init__(self):
         selectors = [
@@ -47,8 +48,7 @@ class Austin25_sample(Multiple_SED_fit_Selector):
     def _assertions(self) -> bool:
         return True
 
-
-# ---------- 2. MAIN2 ---------- #
+#load in catalogue and parameters 
 def main2():
     sample = Austin25_sample
 
@@ -94,7 +94,7 @@ def main2():
     return cat, aper_diams[0], sample_SED_fitter_arr
 
 
-# ---------- 3. PROCESS ONE GALAXY ---------- #
+#calculate the balmer break for one galaxy and plot its SED with the windows
 def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) -> List:
     wav_units = u.um
     mag_units = u.ABmag
@@ -131,7 +131,7 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) ->
     return [idx, balmer_break_mag.value, SED_result_pipes.z.value]
 
 
-# ---------- 4. MAIN ---------- #
+#running for every galaxy in a catalogue and saving the balmer break magnitudes 
 def save_balmer():
     output_folder = "Balmer_output"
     os.makedirs(output_folder, exist_ok=True)
@@ -153,6 +153,6 @@ def save_balmer():
     )
 
 
-# ---------- 5. RUN SCRIPT ---------- #
+#run
 if __name__ == "__main__":
     save_balmer()
