@@ -98,6 +98,7 @@ os.makedirs(output_folder, exist_ok=True)
 
 # Store results
 results = []
+results1 = []
 
 # Loop over all galaxies
 for idx, galaxy in enumerate(cat):
@@ -151,6 +152,12 @@ for idx, galaxy in enumerate(cat):
     red_median_mag = np.median(sed_mags_pipes[red_mask])
     balmer_break_mag = blue_median_mag - red_median_mag
     results.append([idx, balmer_break_mag, z_pipes])
+    blue_mask_EZ = (sed_wavs_EZ >= 0.3400 * u.um) & (sed_wavs_EZ <= 0.3600 * u.um)
+    red_mask_EZ  = (sed_wavs_EZ >= 0.4150 * u.um) & (sed_wavs_EZ <= 0.4250 * u.um)
+    blue_median_mag_EZ = np.median(sed_mags_EZ[blue_mask_EZ])
+    red_median_mag_EZ = np.median(sed_mags_EZ[red_mask_EZ])
+    balmer_break_mag_EZ = blue_median_mag_EZ - red_median_mag_EZ
+    results1.append([idx, balmer_break_mag_EZ, z_pipes])
     # Plot rest-frame SED
     plt.figure(figsize=(8, 5))
     plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
@@ -191,6 +198,27 @@ if os.path.exists(file_path):
 np.savetxt(
     file_path,
     results_array,
+    header="Index    BalmerBreak(mag)    Redshift",
+    fmt=["%-8d", "%.4f", "%.4f"]
+)
+
+# Ensure results is a list of lists with consistent data types
+results1 = [
+    [int(row[0]), float(row[1].value), float(row[2].value)]  # Extract numerical values
+    for row in results1
+]
+
+# Convert to a NumPy array
+results_array1 = np.array(results1)
+# Ensure the file is overwritten
+file_path = os.path.join(output_folder, "balmer_breaksEZ.txt")
+if os.path.exists(file_path):
+    os.remove(file_path)
+
+# Save the results to the text file
+np.savetxt(
+    file_path,
+    results_array1,
     header="Index    BalmerBreak(mag)    Redshift",
     fmt=["%-8d", "%.4f", "%.4f"]
 )
