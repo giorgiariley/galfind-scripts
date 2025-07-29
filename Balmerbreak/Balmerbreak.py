@@ -138,7 +138,13 @@ for idx, galaxy in enumerate(cat):
         continue
 
 # Save all Balmer break values to text file
-results_array = np.array(results, dtype=object)
+results = [
+    [int(row[0]), float(row[1].value), float(row[2].value)]  # Extract numerical values
+    for row in results
+]
+
+# Convert to a NumPy array
+results_array = np.array(results)
 
 # Check shape: must be 2D with 3 columns
 if results_array.ndim == 2 and results_array.shape[1] == 3:
