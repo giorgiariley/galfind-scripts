@@ -82,16 +82,19 @@ cat = Catalogue.pipeline(
     aper_diams=aper_diams,
     forced_phot_band=forced_phot_band,
     version_to_dir_dict=morgan_version_to_dir, 
-    crops = sample(aper_diams[0], SED_fitter_arr[-1].label)
+    #crops = sample(aper_diams[0], SED_fitter_arr[-1].label)
 
 )
 for SED_fitter in SED_fitter_arr:
     for aper_diam in aper_diams:
         SED_fitter(cat, aper_diam, load_PDFs = False, load_SEDs = True, update = True)
+
+
 #load in the SEDs
 for SED_fitter in sample_SED_fitter_arr:
     for aper_diam in aper_diams:
-        SED_fitter(cat, aper_diam, load_PDFs=False, load_SEDs=True, update=True, temp_label = 'temp')
+        SED_fitter(cat, aper_diam, load_PDFs=False, load_SEDs=True, update=True, temp_label='temp')
+
 
 output_folder = "overplot_output"
 os.makedirs(output_folder, exist_ok=True)
@@ -139,12 +142,6 @@ for idx, galaxy in enumerate(cat):
         sed_fluxes_EZ,
         mag_units
     )
-    # fig, ax = plt.subplots()
-    # SED_result_pipes.SED.plot(ax, wav_units = u.um, label='Bagpipes SED')
-    # SED_result_EZ.SED.plot(ax, wav_units = u.um, label='EAZY SED')
-    # ax.set_xlim(0.5, 4.5), ax.set_ylim(30.0, 25.0)
-    # plt.savefig(f"{idx}_test.png")
-
     # Balmer break masks
     blue_mask = (sed_wavs_pipes >= 0.3400 * u.um) & (sed_wavs_pipes <= 0.3600 * u.um)
     red_mask  = (sed_wavs_pipes >= 0.4150 * u.um) & (sed_wavs_pipes <= 0.4250 * u.um)
@@ -158,28 +155,25 @@ for idx, galaxy in enumerate(cat):
     red_median_mag_EZ = np.median(sed_mags_EZ[red_mask_EZ])
     balmer_break_mag_EZ = blue_median_mag_EZ - red_median_mag_EZ
     results1.append([idx, balmer_break_mag_EZ, z_pipes])
-    # Plot rest-frame SED
-    plt.figure(figsize=(8, 5))
-    plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
-    plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
-    plt.plot(sed_wavs_EZ, sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
-    plt.xlabel("Rest-frame Wavelength (μm)")
-    plt.xlim(0, 0.7)
-    plt.ylim(23, 32)
-    plt.ylabel("AbMags")
-    plt.gca().invert_yaxis()
-    plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
-    plt.axvspan(0.4150, 0.4250, color='red', alpha=0.2, label='4150–4250 Å')
-    plt.title(f"Best-fit SED for galaxy {idx} using Bagpipes at redshift {z_pipes:.2f}")
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    plt.tight_layout()
-    plot_path = os.path.join(output_folder, 'SED_plots', f"galaxy_{idx:04d}_overplot.png")
-    plt.savefig(plot_path)
-    plt.close()
-
-# Debug: Print the results list
-print("Results list before conversion:", results)
+    # # Plot rest-frame SED
+    # plt.figure(figsize=(8, 5))
+    # plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
+    # plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Best-fit SED (Bagpipes)', lw=2)
+    # plt.plot(sed_wavs_EZ, sed_mags_EZ, label='Best-fit SED (EAZY)', lw=2, linestyle='--')
+    # plt.xlabel("Rest-frame Wavelength (μm)")
+    # plt.xlim(0, 0.7)
+    # plt.ylim(23, 32)
+    # plt.ylabel("AbMags")
+    # plt.gca().invert_yaxis()
+    # plt.axvspan(0.3400, 0.3600, color='blue', alpha=0.2, label='3400–3600 Å')
+    # plt.axvspan(0.4150, 0.4250, color='red', alpha=0.2, label='4150–4250 Å')
+    # plt.title(f"Best-fit SED for galaxy {idx} using Bagpipes at redshift {z_pipes:.2f}")
+    # plt.grid(True, alpha=0.3)
+    # plt.legend()
+    # plt.tight_layout()
+    # plot_path = os.path.join(output_folder, 'SED_plots', f"galaxy_{idx:04d}_overplot.png")
+    # plt.savefig(plot_path)
+    # plt.close()
 
 # Ensure results is a list of lists with consistent data types
 results = [
@@ -190,7 +184,7 @@ results = [
 # Convert to a NumPy array
 results_array = np.array(results)
 # Ensure the file is overwritten
-file_path = os.path.join(output_folder, "balmer_breaks2.txt")
+file_path = os.path.join(output_folder, "balmer_breaks_allpipes.txt")
 if os.path.exists(file_path):
     os.remove(file_path)
 
@@ -211,7 +205,7 @@ results1 = [
 # Convert to a NumPy array
 results_array1 = np.array(results1)
 # Ensure the file is overwritten
-file_path = os.path.join(output_folder, "balmer_breaksEZ.txt")
+file_path = os.path.join(output_folder, "balmer_breaksa_allEZ.txt")
 if os.path.exists(file_path):
     os.remove(file_path)
 
