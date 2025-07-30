@@ -4,6 +4,7 @@ import os
 os.environ['GALFIND_CONFIG_NAME'] = 'galfind_config_Griley.ini'
 import numpy as np
 import matplotlib.pyplot as plt
+
 from galfind import (
     Catalogue, EAZY, Bagpipes, SED_code,
     Redshift_Extractor,
