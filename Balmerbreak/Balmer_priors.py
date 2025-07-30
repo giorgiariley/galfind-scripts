@@ -16,19 +16,6 @@ def load_hdf5_data(file_path, dataset_name):
     with h5py.File(file_path, "r") as h5_file:
         return h5_file[dataset_name][:]
 
-def extract_balmer_break_values(file_path):
-    """
-    Extract Balmer break values (column 2) from a text file.
-    
-    Parameters:
-        file_path (str): Path to the text file.
-    
-    Returns:
-        np.ndarray: Array of Balmer break values.
-    """
-    # Load the file and extract the second column
-    data = np.loadtxt(file_path, usecols=1)
-    return data
 
 def plot_histogram_comparison(data_prior, posterior1, posterior2, bins, output_file, title, xlabel, ylabel):
     """
@@ -73,14 +60,17 @@ def main():
     # File paths
     h5_file_path = "/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/priors/Bagpipes_sfh_cont_bursty_z6.0_Calzetti_log_10_Z_log_10_BPASS_zfix_z6.0.h5"
     dataset_name = "D4000"
-    balmer_break_file_pipes = "/nvme/scratch/work/Griley/galfind_scripts/Balmerbreak/overplot_output/balmer_breaks2.txt"
-    balmer_break_file_EZ = "/nvme/scratch/work/Griley/galfind_scripts/Balmerbreak/overplot_output/balmer_breaksEZ.txt"
+    balmer_break_file = "/nvme/scratch/work/Griley/galfind_scripts/Balmerbreak/Balmer_output/balmer_breaks2.txt"
     output_file = "d4000_histogram_with_all_posteriors.png"
 
     # Load data
     d4000_data = load_hdf5_data(h5_file_path, dataset_name)
-    balmer_break_values_pipes = extract_balmer_break_values(balmer_break_file_pipes)
-    balmer_break_values_EZ = extract_balmer_break_values(balmer_break_file_EZ)
+    # Load the full text file with 4 columns
+    data = np.loadtxt(balmer_break_file, usecols=(1, 2))  # just columns 2 & 3
+    balmer_break_values_pipes = data[:, 0]  # Column 2 = Bagpipes
+    balmer_break_values_EZ = data[:, 1]     # Column 3 = EAZY
+    print(balmer_break_values_pipes, balmer_break_values_EZ)
+
 
     # Single histogram plot
     plot_histogram_comparison(
