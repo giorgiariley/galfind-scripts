@@ -86,16 +86,20 @@ def main2():
     for SED_fitter in SED_fitter_arr:
         for aper_diam in aper_diams:
             SED_fitter(cat, aper_diam, load_PDFs = False, load_SEDs = True, update = True)
-    #load in the SEDs
+
+    # if sample is not None:
+    #     sampler = sample(aper_diams[0], SED_fitter_arr[-1])
+    #     new_cat = sampler(cat, return_copy = True)
+
     for SED_fitter in sample_SED_fitter_arr:
         for aper_diam in aper_diams:
-            SED_fitter(cat, aper_diam, load_PDFs=False, load_SEDs=True, update=True, temp_label = 'temp')
+                SED_fitter(cat, aper_diam, load_PDFs=False, load_SEDs=True, update=True)
 
-    return cat, aper_diams[0], sample_SED_fitter_arr
+    return cat, aper_diams[0], sample_SED_fitter_arr, SED_fitter_arr
 
 
 #calculate the balmer break for one galaxy and plot its SED with the windows
-def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) -> List:
+def process_galaxy(galaxy, idx: int, aper, sample_fitter, sed_fitter, output_folder: str) -> List:
     wav_units = u.um
     mag_units = u.ABmag
 
@@ -108,14 +112,30 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) ->
         return None
     sed_mags_pipes = funcs.convert_mag_units(SED_result_pipes.SED.wavs, sed_fluxes_pipes, mag_units)
 
+    SED_result_EZ = galaxy.aper_phot[aper].SED_results[sed_fitter.label]
+    sed_wavs_obs_EZ = funcs.convert_wav_units(SED_result_EZ.SED.wavs, wav_units)
+    z_EZ = SED_result_EZ.z
+    sed_wavs_EZ= sed_wavs_obs_EZ / (1 + z_EZ)
+    sed_fluxes_EZ = np.where(SED_result_EZ.SED.mags <= 0, 1e-10 * SED_result_EZ.SED.mags.unit, SED_result_EZ.SED.mags)
+    if np.all(sed_fluxes_EZ <= 0):
+        return None
+    sed_mags_EZ = funcs.convert_mag_units(SED_result_EZ.SED.wavs, sed_fluxes_EZ, mag_units)
+
     blue_mask = (sed_wavs_pipes >= 0.3400 * u.um) & (sed_wavs_pipes <= 0.3600 * u.um)
-    red_mask = (sed_wavs_pipes >= 0.4150 * u.um) & (sed_wavs_pipes <= 0.4250 * u.um)
-    balmer_break_mag = np.median(sed_mags_pipes[blue_mask]) - np.median(sed_mags_pipes[red_mask])
+    red_mask  = (sed_wavs_pipes >= 0.4150 * u.um) & (sed_wavs_pipes <= 0.4250 * u.um)
+    blue_median_mag = np.median(sed_mags_pipes[blue_mask])
+    red_median_mag = np.median(sed_mags_pipes[red_mask])
+    balmer_break_mag_pipes = blue_median_mag - red_median_mag
+    blue_mask_EZ = (sed_wavs_EZ >= 0.3400 * u.um) & (sed_wavs_EZ <= 0.3600 * u.um)
+    red_mask_EZ  = (sed_wavs_EZ >= 0.4150 * u.um) & (sed_wavs_EZ <= 0.4250 * u.um)
+    blue_median_mag_EZ = np.median(sed_mags_EZ[blue_mask_EZ])
+    red_median_mag_EZ = np.median(sed_mags_EZ[red_mask_EZ])
+    balmer_break_mag_EZ = blue_median_mag_EZ - red_median_mag_EZ
 
     plot_path = os.path.join(output_folder, 'SED_plots', f"galaxy_{idx:04d}_sed.png")
     os.makedirs(os.path.dirname(plot_path), exist_ok=True)
     plt.figure(figsize=(8, 5))
-    plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag:.2f}')
+    plt.plot([], [], ' ', label=f'Balmer Break = {balmer_break_mag_pipes:.2f}')
     plt.plot(sed_wavs_pipes, sed_mags_pipes, label='Bagpipes SED', lw=2)
     plt.xlim(0, 0.7)
     plt.ylim(23, 32)
@@ -128,7 +148,7 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, output_folder: str) ->
     plt.legend(); plt.tight_layout()
     plt.grid(alpha=0.3); plt.savefig(plot_path); plt.close()
 
-    return [idx, balmer_break_mag.value, SED_result_pipes.z.value]
+    return [idx, balmer_break_mag_pipes.value, balmer_break_mag_EZ.value,  SED_result_pipes.z.value]
 
 
 #running for every galaxy in a catalogue and saving the balmer break magnitudes 
@@ -136,11 +156,11 @@ def save_balmer():
     output_folder = "Balmer_output"
     os.makedirs(output_folder, exist_ok=True)
 
-    cat, aper, sample_SED_fitter_arr = main2()
+    cat, aper, sample_SED_fitter_arr, SED_fitter_arr = main2()
 
     results = []
     for idx, galaxy in enumerate(cat):
-        res = process_galaxy(galaxy, idx, aper, sample_SED_fitter_arr[0], output_folder)
+        res = process_galaxy(galaxy, idx, aper, sample_SED_fitter_arr[-1], SED_fitter_arr[-1], output_folder)
         if res:
             results.append(res)
 
@@ -148,8 +168,8 @@ def save_balmer():
     np.savetxt(
         os.path.join(output_folder, "balmer_breaks2.txt"),
         results_array,
-        header="Index    BalmerBreak(mag)    Redshift",
-        fmt=["%-8d", "%.4f", "%.4f"]
+        header="Index    BagpipesBalmerBreak(mag)   EAZYBalmerbreak(mag)    Redshift",
+        fmt=["%-8d", "%.4f", "%.4f", "%.4f"]
     )
 
 
