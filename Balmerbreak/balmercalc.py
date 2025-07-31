@@ -149,7 +149,7 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, sed_fitter, output_fol
     plt.legend(); plt.tight_layout()
     plt.grid(alpha=0.3); plt.savefig(plot_path); plt.close()
 
-    return [idx, balmer_break_mag_pipes.value, balmer_break_mag_EZ.value,  SED_result_pipes.z.value]
+    return [idx, str(galaxy.ID), balmer_break_mag_pipes.value, balmer_break_mag_EZ.value, SED_result_pipes.z.value]
 
 
 #running for every galaxy in a catalogue and saving the balmer break magnitudes 
@@ -165,12 +165,12 @@ def save_balmer():
         if res:
             results.append(res)
 
-    results_array = np.array(results)
+    results_array = np.array(results, dtype=object)
     np.savetxt(
         os.path.join(output_folder, "balmer_breaks2.txt"),
         results_array,
-        header="Index    BagpipesBalmerBreak(mag)   EAZYBalmerbreak(mag)    Redshift",
-        fmt=["%-8d", "%.4f", "%.4f", "%.4f"]
+        header="Index    ID    BagpipesBalmerBreak(mag)   EAZYBalmerbreak(mag)    Redshift",
+        fmt=["%-8d", "%s", "%.4f", "%.4f", "%.4f"]
     )
 
 
