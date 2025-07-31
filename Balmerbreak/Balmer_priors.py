@@ -85,8 +85,8 @@ def main():
     data = np.loadtxt(balmer_break_file, usecols=(1, 2, 3))  # Columns 2, 3, 4
     balmer_break_values_pipes = data[:, 0]
     balmer_break_values_EZ = data[:, 1]
-    redshifts = data[:, 2]
-
+    #redshifts = data[:, 2]
+    
     # Plot comparison histograms
     plot_histogram_comparison(
         data_prior=d4000_data,
@@ -105,16 +105,29 @@ def main():
     # Compute KL divergence (posterior vs prior)
     kl_values = compute_kl_divergences(d4000_data, posterior_samples, bins=30)
 
-    # Plot KL divergence vs redshift
+    # Plot KL divergence vs Log F444W
     plt.figure(figsize=(8, 6))
     plt.scatter(F444W_masked, kl_values, c=balmer_break_values_pipes, cmap='plasma', s=30, alpha=0.8) #change x to 444 flux or log (ie mag)
-    plt.xlabel("F444W ")
-    plt.ylabel("KL Divergence (Bagpipes Posterior || Prior)")
-    plt.title("Information Gained on D4000 vs Redshift")
+    plt.xlabel("log F444W ")
+    plt.xscale('log')
+    plt.ylabel("KL Divergence (Bagpipes D4000)")
+    plt.title("Information Gained on D4000 vs Log F444W")
     plt.colorbar(label="Bagpipes D4000")
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig("kl_vs_redshift_bagpipes.png")
+    plt.savefig("kl_vs_logF444W.png")
+    plt.show()
+
+    # Plot KL divergence vs D4000
+    plt.figure(figsize=(8, 6))
+    plt.scatter(balmer_break_values_pipes, kl_values, c=F444W_masked, cmap='plasma', s=30, alpha=0.8) #change x to 444 flux or log (ie mag)
+    plt.xlabel("D4000 ")
+    plt.ylabel("KL Divergence (Bagpipes D4000)")
+    plt.title("Information Gained on D4000 vs D4000")
+    plt.colorbar(label="LogF444W")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig("kl_vs_D4000.png")
     plt.show()
 
 if __name__ == "__main__":
