@@ -82,7 +82,7 @@ cat = Catalogue.pipeline(
     aper_diams=aper_diams,
     forced_phot_band=forced_phot_band,
     version_to_dir_dict=morgan_version_to_dir, 
-    #crops = sample(aper_diams[0], SED_fitter_arr[-1].label)
+    crops = sample(aper_diams[0], SED_fitter_arr[-1].label)
 
 )
 for SED_fitter in SED_fitter_arr:
