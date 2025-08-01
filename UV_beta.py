@@ -7,7 +7,7 @@ from galfind import Catalogue, EAZY, SED_code
 import matplotlib.pyplot as plt
 import numpy as np
 from run_cat import Austin25_sample
-from galfind import UV_Beta_Calculator
+from galfind import UV_Beta_Calculator, Bagpipes
 
 
 sample = Austin25_sample
@@ -37,11 +37,6 @@ cat = Catalogue.pipeline(
 )
 
 
-# beta_calculator = UV_Beta_Calculator(
-#         aper_diam = aper_diams[0],
-#         SED_fitter.label
-#     )
-
 
 #they have in their example
 SED_fit_params_arr = [{"templates": "fsps_larson", "lowz_zmax": None}]
@@ -50,10 +45,13 @@ for SED_fit_params in SED_fit_params_arr:
     EAZY_fitter(cat, aper_diams[0], load_PDFs = True, load_SEDs = True, update = True)
 SED_fit_label = EAZY_fitter.label
 
+
 beta_calculator = UV_Beta_Calculator(
         aper_diam = aper_diams[0],
         SED_fit_label = SED_fit_label,
     )
+
+
 
 
 
