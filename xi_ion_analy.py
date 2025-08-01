@@ -11,12 +11,8 @@ def load_bagpipes_table(fits_path):
     return table
 
 
-def plot_xiion_against(table, x_column, output_path, xlabel=None, xlim=None, ylim=None):
-    """
-    General-purpose function to plot ξ_ion (case B, rest-frame) against any other column.
-    Points with burstiness < 2 are colour-coded differently.
-    Allows optional axis clipping to remove outliers.
-    """
+def plot_xiion_against(table, x_column, output_path, xlabel=None, xlim=None, ylim=None, highlight_mask=None):
+    ...
     xi_ion = table['xi_ion_caseB_rest_50']
     x = table[x_column]
     burstiness = table['burstiness_50']
@@ -28,7 +24,16 @@ def plot_xiion_against(table, x_column, output_path, xlabel=None, xlim=None, yli
     colours = np.where(burstiness[valid] < 2, 'crimson', 'teal')
 
     plt.figure(figsize=(8, 6), facecolor='white')
-    plt.scatter(x[valid], xi_ion[valid], alpha=0.6, c=colours, edgecolor='none')
+    plt.scatter(x[valid], np.log10(xi_ion[valid]), alpha=0.6, c=colours, edgecolor='none')
+
+    # Overlay highlighted galaxies (e.g., extreme Balmer break sample)
+    if highlight_mask is not None:
+        highlight_valid = valid & highlight_mask
+        plt.scatter(
+            x[highlight_valid], np.log10(xi_ion[highlight_valid]),
+            edgecolor='black', facecolor='gold', s=80, linewidth=1.0,
+            marker='*', label='Selected: low BB, low $\\xi_{\\rm ion}$, low $\\beta$'
+        )
 
     plt.xlabel(xlabel if xlabel else x_column.replace("_", " ").capitalize())
     plt.ylabel(r"$\xi_{\mathrm{ion}}^{\mathrm{CaseB}}$ (Hz erg$^{-1}$)")
@@ -48,7 +53,10 @@ def plot_xiion_against(table, x_column, output_path, xlabel=None, xlim=None, yli
         Line2D([0], [0], marker='o', color='w', label='Burstiness ≥ 2',
                markerfacecolor='teal', markersize=8)
     ]
-    plt.legend(handles=legend_elements)
+    plt.legend(handles=legend_elements + (
+        [Line2D([0], [0], marker='*', color='w', label='Selected extremes',
+                markerfacecolor='gold', markeredgecolor='black', markersize=12)] if highlight_mask is not None else []
+    ))
 
     plt.tight_layout()
     plt.savefig(output_path)
@@ -59,6 +67,25 @@ def plot_xiion_against(table, x_column, output_path, xlabel=None, xlim=None, yli
 # Load FITS table
 fits_path = "/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/pipes/cats/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/Bagpipes_sfh_cont_bursty_zEAZYfspslarson_Calzetti_log_10_Z_log_10_BPASS_zfix.fits"
 table = load_bagpipes_table(fits_path)
+# Load Balmer break info
+balmer_data = np.loadtxt('/nvme/scratch/work/Griley/galfind_scripts/Balmerbreak/Balmer_output/balmer_breaks2.txt', skiprows=1)
+balmer_ids_str = np.array([str(int(x)) for x in balmer_data[:, 1]])
+balmer_breaks = balmer_data[:, 2]
+
+# Match to Bagpipes table
+table_ids = np.array([str(x).strip() for x in table['#ID']])
+id_to_bb = dict(zip(balmer_ids_str, balmer_breaks))
+
+# Build mask aligned with table
+bb_array = np.array([id_to_bb.get(str(x).strip(), np.nan) for x in table['#ID']])
+log_xi_ion = np.log10(table['xi_ion_caseB_rest_50'])
+UV_beta = table['beta_C94_50']
+
+highlight_mask = (
+    (bb_array <= 0.35) &
+    (log_xi_ion <= 24.6) &
+    (UV_beta <= -2.6)
+)
 
 # Add summed EW columns
 table['Ha_NII_EW'] = (
@@ -98,6 +125,14 @@ for col in ew_columns:
         plot_xiion_against(table, col, output_file, xlabel=nice_label, xlim=(0, 120))
     elif col == "NII_6548_EW_rest_50":
         plot_xiion_against(table, col, output_file, xlabel=nice_label, xlim=(0, 50))
+    if col == "Halpha_EW_rest_50":
+        plot_xiion_against(
+            table, col, output_file,
+            xlabel=nice_label, xlim=(0, 2500),
+            highlight_mask=highlight_mask
+        )
+
+
     else:
         plot_xiion_against(table, col, output_file, xlabel=nice_label)
 
