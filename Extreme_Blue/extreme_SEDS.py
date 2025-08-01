@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from typing import Union
 from astropy.io import fits
 
-# -------------- Selection Classes --------------
+# -------------- Selection  --------------
 
 class Austin25_unmasked_criteria(Multiple_Mask_Selector):
     def __init__(self):
@@ -52,17 +52,23 @@ class Austin25_sample(Multiple_SED_fit_Selector):
 
 # -------------- Load Data --------------
 
+#bagpipes
 hdulist = fits.open("/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/pipes/cats/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/Bagpipes_sfh_cont_bursty_zEAZYfspslarson_Calzetti_log_10_Z_log_10_BPASS_zfix.fits")
 table_bagpipes = Table(hdulist[1].data)
 hdulist.close()
+#balmer breaks
 data = np.loadtxt('/nvme/scratch/work/Griley/galfind_scripts/Balmerbreak/Balmer_output/balmer_breaks2.txt', skiprows=1)
+#UV Beta
+hdulist2 = fits.open('/raid/scratch/work/Griley/GALFIND_WORK/Catalogues/v13/ACS_WFC+NIRCam/JADES-DR3-GS-East/(0.32)as/JADES-DR3-GS-East_MASTER_Sel-F277W+F356W+F444W_v13.fits')
+table_beta = Table(hdulist2[5].data)
+print(table_beta.colnames)
 
-# Cast IDs to string for reliable matching
+
+# Load in variables
 balmer_ids = data[:, 1]
-balmer_breaks = data[:, 2]           # Third column is Balmer break
+balmer_breaks = data[:, 2]        
 
-
-UV_beta = table_bagpipes['beta_C94_50']
+UV_beta = table_beta['beta_[1250,3000]AA_0.32as']  
 log_xi_ion = np.log10(table_bagpipes['xi_ion_caseB_rest_50'])
 
 # Skip the header (assume first row is '#ID')
@@ -104,7 +110,8 @@ selected_bagpipes_indices = matched_bagpipes_indices[mask]
 
 print(f"Number of galaxies passing the cut: {len(selected_bagpipes_indices)}")
 print(f"Selected bagpipes indices: {selected_bagpipes_indices}")
-# -------------- Set up Catalog + SED Readers --------------
+
+# -------------- Set up Catalogue --------------
 
 sample = Austin25_sample
 survey = "JADES-DR3-GS-East"
