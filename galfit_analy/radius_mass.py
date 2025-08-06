@@ -70,6 +70,20 @@ def plot_mass_vs_radius(stellar_mass, radius_kpc, is_extreme_psb, savefig=None):
         stellar_mass[is_extreme_psb], radius_kpc[is_extreme_psb],
         color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
     )
+    # === Load the external comparison data ===
+    external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
+    external_table = load_fits_table(external_fits, hdu_index=1)  # Change hdu_index if not 1
+
+    # Extract mass and radius (log10 mass, radius in kpc)
+    external_mass = external_table['stellar_mass_50']
+    external_radius_kpc = external_table['re_kpc']
+
+    # Overplot on existing axes
+    plt.scatter(
+    external_mass, external_radius_kpc,
+    marker='o', facecolors='none', edgecolors='slategrey', s=30, label='Westcott:EPOCHS-XI'
+    )
+
     plt.yscale('log')
     plt.xlabel('Stellar Mass (log$_{10}$ M$_\odot$, scaled)')
     plt.ylabel('Effective Radius (kpc)')
@@ -108,6 +122,7 @@ def plot_mass_vs_radius_by_zbin(
             color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2,
             label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
         )
+        
         plt.yscale('log')
         plt.xlabel('Stellar Mass (log$_{10}$ M$_\odot$, scaled)')
         plt.ylabel('Effective Radius (kpc)')
@@ -120,7 +135,7 @@ def plot_mass_vs_radius_by_zbin(
         print(f"Saving plot for {bins[i-1]} < z <= {bins[i]}, n={np.sum(mask)}")
         plt.close()
 
-def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None):
+def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None, mass_cut_applied=False):
     """Scatter plot of redshift vs. effective radius, highlighting extreme PSBs."""
     plt.figure(figsize=(10, 6), facecolor='white')
     # Plot others
@@ -133,16 +148,185 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None)
         redshifts[is_extreme_psb], radius_kpc[is_extreme_psb],
         color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
     )
+    # External comparison data, as before...
+    external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
+    external_table = load_fits_table(external_fits, hdu_index=1)
+    external_mass = external_table['stellar_mass_50']
+    external_radius_kpc = external_table['re_kpc']
+    external_redshift = external_table['zbest_fsps_larson']
+    plt.scatter(
+        external_redshift, external_radius_kpc,
+        marker='o', facecolors='none', edgecolors='slategrey', s=30, label='Westcott:EPOCHS-XI'
+    )
+
     plt.yscale('log')
     plt.xlabel('Redshift')
     plt.ylabel('Effective Radius (kpc)')
-    plt.title('Redshift vs Effective Radius')
+    # Dynamic title
+    if mass_cut_applied:
+        plt.title('Redshift vs Effective Radius (log M$_* > 8.1$ cut applied)')
+    else:
+        plt.title('Redshift vs Effective Radius (no mass cut)')
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.legend()
     plt.tight_layout()
     if savefig:
         plt.savefig(savefig)
     plt.close()
+
+def plot_binned_mass_vs_radius(stellar_mass, radius_kpc, is_extreme_psb, nbins=16, savefig=None):
+    """
+    Plots median effective radius vs. stellar mass in mass bins,
+    for non-extreme PSBs, extreme PSBs, and Westcott comparison sample.
+    """
+    plt.figure(figsize=(9,6))
+    bins = np.linspace(np.nanmin(stellar_mass), np.nanmax(stellar_mass), nbins + 1)
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+    # -- Other galaxies (not extreme PSBs)
+    medians_other, lower_other, upper_other = [], [], []
+    for i in range(nbins):
+        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & (~is_extreme_psb)
+        vals = radius_kpc[mask]
+        if np.sum(mask) > 0:
+            medians_other.append(np.nanmedian(vals))
+            lower_other.append(np.nanpercentile(vals, 16))
+            upper_other.append(np.nanpercentile(vals, 84))
+        else:
+            medians_other.append(np.nan)
+            lower_other.append(np.nan)
+            upper_other.append(np.nan)
+    plt.errorbar(bin_centers, medians_other, yerr=[np.array(medians_other)-np.array(lower_other), np.array(upper_other)-np.array(medians_other)],
+                 fmt='o-', color='tomato', alpha=0.7, label='Other galaxies')
+
+    # -- Extreme PSBs
+    medians_psb, lower_psb, upper_psb = [], [], []
+    for i in range(nbins):
+        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & is_extreme_psb
+        vals = radius_kpc[mask]
+        if np.sum(mask) > 0:
+            medians_psb.append(np.nanmedian(vals))
+            lower_psb.append(np.nanpercentile(vals, 16))
+            upper_psb.append(np.nanpercentile(vals, 84))
+        else:
+            medians_psb.append(np.nan)
+            lower_psb.append(np.nan)
+            upper_psb.append(np.nan)
+    plt.errorbar(bin_centers, medians_psb, yerr=[np.array(medians_psb)-np.array(lower_psb), np.array(upper_psb)-np.array(medians_psb)],
+                 fmt='o-', color='royalblue', alpha=0.7, label='Extreme PSBs')
+
+    # --- Binned Westcott Data ---
+    # Load Westcott data
+    external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
+    external_table = load_fits_table(external_fits, hdu_index=1)
+    external_mass = external_table['stellar_mass_50']
+    external_radius_kpc = external_table['re_kpc']
+    # Use same bins for fair comparison
+    medians_west, lower_west, upper_west = [], [], []
+    for i in range(nbins):
+        mask = (external_mass >= bins[i]) & (external_mass < bins[i+1])
+        vals = external_radius_kpc[mask]
+        if np.sum(mask) >= 5:
+            medians_west.append(np.nanmedian(vals))
+            lower_west.append(np.nanpercentile(vals, 16))
+            upper_west.append(np.nanpercentile(vals, 84))
+        else:
+            medians_west.append(np.nan)
+            lower_west.append(np.nan)
+            upper_west.append(np.nan)
+    plt.errorbar(bin_centers, medians_west, yerr=[np.array(medians_west)-np.array(lower_west), np.array(upper_west)-np.array(medians_west)],
+                 fmt='o-', color='slategrey', alpha=1, markerfacecolor='none', label='Westcott:EPOCHS-XI')
+
+    plt.yscale('log')
+    plt.xlabel('Stellar Mass (log$_{10}$ M$_\odot$, scaled)')
+    plt.ylabel('Median Effective Radius (kpc)')
+    plt.title('Binned: Stellar Mass vs Effective Radius')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.axvline(8.1, color='gray', linestyle='--', label='90% completeness')
+    plt.legend()
+    plt.tight_layout()
+    if savefig:
+        plt.savefig(savefig)
+    plt.show()
+    plt.close()
+
+
+def plot_binned_redshift_vs_radius(redshifts, radius_kpc, is_extreme_psb, nbins=12, savefig=None, mass_cut_applied=False):
+    """
+    Plots median effective radius vs. redshift in bins, for 'other galaxies', extreme PSBs, and Westcott.
+    """
+    plt.figure(figsize=(9,6))
+    bins = np.linspace(np.nanmin(redshifts), np.nanmax(redshifts), nbins + 1)
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+    # -- Other galaxies (not extreme PSBs)
+    medians_other, lower_other, upper_other = [], [], []
+    for i in range(nbins):
+        mask = (redshifts >= bins[i]) & (redshifts < bins[i+1]) & (~is_extreme_psb)
+        vals = radius_kpc[mask]
+        if np.sum(mask) > 0:
+            medians_other.append(np.nanmedian(vals))
+            lower_other.append(np.nanpercentile(vals, 16))
+            upper_other.append(np.nanpercentile(vals, 84))
+        else:
+            medians_other.append(np.nan)
+            lower_other.append(np.nan)
+            upper_other.append(np.nan)
+    plt.errorbar(bin_centers, medians_other, yerr=[np.array(medians_other)-np.array(lower_other), np.array(upper_other)-np.array(medians_other)],
+                 fmt='o-', color='tomato', alpha=0.7, label='Other galaxies')
+
+    # -- Extreme PSBs
+    medians_psb, lower_psb, upper_psb = [], [], []
+    for i in range(nbins):
+        mask = (redshifts >= bins[i]) & (redshifts < bins[i+1]) & is_extreme_psb
+        vals = radius_kpc[mask]
+        if np.sum(mask) > 0:
+            medians_psb.append(np.nanmedian(vals))
+            lower_psb.append(np.nanpercentile(vals, 16))
+            upper_psb.append(np.nanpercentile(vals, 84))
+        else:
+            medians_psb.append(np.nan)
+            lower_psb.append(np.nan)
+            upper_psb.append(np.nan)
+    plt.errorbar(bin_centers, medians_psb, yerr=[np.array(medians_psb)-np.array(lower_psb), np.array(upper_psb)-np.array(medians_psb)],
+                 fmt='o-', color='royalblue', alpha=0.7, label='Extreme PSBs')
+
+    # --- Binned Westcott Data ---
+    external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
+    external_table = load_fits_table(external_fits, hdu_index=1)
+    external_redshift = external_table['zbest_fsps_larson']
+    external_radius_kpc = external_table['re_kpc']
+    # Use same bins for fair comparison
+    medians_west, lower_west, upper_west = [], [], []
+    for i in range(nbins):
+        mask = (external_redshift >= bins[i]) & (external_redshift < bins[i+1])
+        vals = external_radius_kpc[mask]
+        if np.sum(mask) >= 5:
+            medians_west.append(np.nanmedian(vals))
+            lower_west.append(np.nanpercentile(vals, 16))
+            upper_west.append(np.nanpercentile(vals, 84))
+        else:
+            medians_west.append(np.nan)
+            lower_west.append(np.nan)
+            upper_west.append(np.nan)
+    plt.errorbar(bin_centers, medians_west, yerr=[np.array(medians_west)-np.array(lower_west), np.array(upper_west)-np.array(medians_west)],
+                 fmt='o-', color='slategrey', alpha=1, markerfacecolor='none', label='Westcott:EPOCHS-XI')
+
+    plt.yscale('log')
+    plt.xlabel('Redshift')
+    plt.ylabel('Median Effective Radius (kpc)')
+    if mass_cut_applied:
+        plt.title('Binned: Redshift vs Effective Radius (log M$_* > 8.1$ cut)')
+    else:
+        plt.title('Binned: Redshift vs Effective Radius (no mass cut)')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.legend()
+    plt.tight_layout()
+    if savefig:
+        plt.savefig(savefig)
+    plt.show()
+    plt.close()
+
 
 
 def main(
@@ -180,23 +364,12 @@ def main(
     halpha_clean = table_bagpipes_matched['Halpha_EW_rest_50'][reliable_mask]
 
     # Extreme PSB mask
-    is_extreme_psb = (burstiness_clean <= 1) & (halpha_clean <= 200)
-    print("Checking table alignment for the first 5 galaxies:")
-    for i in range(5):
-        galfit_id = table_galfit_matched['id'][i]
-        bagpipes_id = table_bagpipes_matched['#ID'][i]
-        redshift = table_bagpipes_matched['input_redshift'][i]
-        r_e = table_galfit_matched['r_e'][i]
-        print(f"Index {i}: GALFIT id={galfit_id}, Bagpipes #ID={bagpipes_id}, z={redshift:.3f}, r_e={r_e:.2f} px")
-    # Plot
-    plot_mass_vs_radius(stellar_mass_scaled, radius_kpc_clean, is_extreme_psb, savefig="mass_vs_radius_extreme_psbs.png")
-        # ... after is_extreme_psb is defined:
-    # plot_mass_vs_radius_by_zbin(
-    #     stellar_mass_scaled, radius_kpc_clean, is_extreme_psb, redshifts[reliable_mask]
-    # )
-    plot_radius_vs_redshift(
-    redshifts[reliable_mask], radius_kpc_clean, is_extreme_psb, savefig="radius_vs_redshift_extreme_psbs.png"
-    )
+    is_extreme_psb = (burstiness_clean <= 1) & (halpha_clean <= 100)
+    
+    plot_binned_mass_vs_radius(stellar_mass_scaled, radius_kpc_clean, is_extreme_psb, nbins=16, savefig='binned_mass_vs_radius.png')
+    mass_cut_mask = stellar_mass_scaled > 8.1
+    plot_binned_redshift_vs_radius(redshifts[reliable_mask][mass_cut_mask], radius_kpc_clean[mass_cut_mask], is_extreme_psb[mass_cut_mask], nbins=12, savefig='binned_redshift_vs_radius_masscut.png', mass_cut_applied=True)
+
 
 
 if __name__ == "__main__":
