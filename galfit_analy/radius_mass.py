@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from astropy.cosmology import Planck18 as cosmo
 import astropy.units as u
+import os
 
 def load_fits_table(fits_path, hdu_index=1):
     """ FITS table loader"""
@@ -26,6 +27,18 @@ def match_three_tables_by_id(table1, table2, table3, col1, col2, col3):
     idx3 = np.nonzero(np.in1d(ids3, common_ids))[0]
     return table1[idx1], table2[idx2], table3[idx3]
 
+def load_mass_pdf(pdf_dir, galaxy_id):
+    """Loads the Bagpipes PDF for stellar mass for a given galaxy ID."""
+    pdf_path = os.path.join(pdf_dir, f"{galaxy_id}.txt")
+    # Try to handle various file shapes (grid or sample)
+    samples = np.loadtxt(pdf_path)
+    # Sometimes it's just a list of samples
+    if samples.ndim == 1:
+        return samples
+
+    else:
+        raise ValueError("Unknown PDF file format")
+    
 
 def compute_flux_ratio(table, filter_name):
     """Computes the auto/aper flux ratio and clips extreme values."""
@@ -46,6 +59,70 @@ def get_radius_kpc(table_galfit, redshifts, pixel_scale=0.03):
         for z in redshifts
     ])
     return radius_arcsec * DA_kpc_per_arcsec
+
+def monte_carlo_mass_radius(
+    table_galfit_matched, table_bagpipes_matched, 
+    pdf_dir, id_column, n_samples=500
+):
+    """
+    Monte Carlo sampling with proper error handling and physical constraints
+    """
+    all_mass = []
+    all_radius = []
+    galaxy_ids = table_galfit_matched[id_column]
+    redshifts = table_bagpipes_matched['input_redshift']
+
+    for i, gal_id in enumerate(galaxy_ids):
+        # Load stellar mass PDF samples for this galaxy
+        try:
+            mass_samples = load_mass_pdf(pdf_dir, gal_id)
+        except Exception as e:
+            print(f"Skipping galaxy {gal_id}: {e}")
+            continue
+            
+        # Draw n_samples from mass_samples
+        if len(mass_samples) > n_samples:
+            mass_samples = np.random.choice(mass_samples, n_samples, replace=False)
+        else:
+            mass_samples = np.random.choice(mass_samples, n_samples, replace=True)
+
+        # Get radius parameters
+        r_e_pix = table_galfit_matched['r_e'][i]
+        r_e_err_pix = table_galfit_matched['r_e_u1'][i]
+        
+        # **CRITICAL FIX**: Apply physical constraints to radius sampling
+        # Use log-normal sampling to avoid negative values and extreme outliers
+        # Convert to log space for sampling
+        log_r_e = np.log(max(r_e_pix, 0.1))  # Ensure positive value
+        log_r_e_err = r_e_err_pix / max(r_e_pix, 0.1)  # Relative error
+        
+        # Sample in log space and convert back
+        log_r_e_samples = np.random.normal(log_r_e, min(log_r_e_err, 0.5), n_samples)
+        r_e_samples_pix = np.exp(log_r_e_samples)
+        
+        # Apply hard physical constraints on pixel radius
+        r_e_samples_pix = np.clip(r_e_samples_pix, 0.5, 100)  # 0.5-100 pixels is reasonable
+        
+        # Convert to kpc
+        z = redshifts[i]
+        r_e_samples_kpc = get_radius_kpc(
+            Table({'r_e': r_e_samples_pix}), 
+            np.full(n_samples, z)
+        )
+
+        # **CRITICAL FIX**: Apply strict physical constraints on final radius
+        # Galaxies should be between 0.05 and 15 kpc effective radius
+        valid = (r_e_samples_kpc > 0.05) & (r_e_samples_kpc < 15.0) & np.isfinite(r_e_samples_kpc)
+        
+        r_e_samples_kpc = r_e_samples_kpc[valid]
+        mass_samples = mass_samples[valid]
+        
+        if len(r_e_samples_kpc) > 0:  # Only add if we have valid samples
+            all_mass.extend(mass_samples)
+            all_radius.extend(r_e_samples_kpc)
+
+    return np.array(all_mass), np.array(all_radius)
+
 
 def flag_unreliable_fits(table_galfit, radius_kpc, redshifts):
     """Returns a boolean mask of reliable fits."""
@@ -327,50 +404,231 @@ def plot_binned_redshift_vs_radius(redshifts, radius_kpc, is_extreme_psb, nbins=
     plt.show()
     plt.close()
 
+def plot_mass_vs_radius_with_hexbin(
+    stellar_mass_samples, radius_samples,
+    stellar_mass, radius_kpc, is_extreme_psb, nbins=16, savefig=None
+):
+    """
+    Fixed hexbin plot with proper log scale handling
+    """
+    plt.figure(figsize=(12, 8), facecolor='white')
+    
+    # Filter out invalid samples and apply physical constraints
+    valid_samples = (
+        (stellar_mass_samples > 6.0) & (stellar_mass_samples < 12.0) &
+        (radius_samples > 0.05) & (radius_samples < 15.0) &
+        np.isfinite(stellar_mass_samples) & np.isfinite(radius_samples)
+    )
+    
+    mass_clean = stellar_mass_samples[valid_samples]
+    radius_clean = radius_samples[valid_samples]
+    
+    print(f"Valid samples for hexbin: {len(mass_clean)} out of {len(stellar_mass_samples)}")
+    print(f"Mass range: {mass_clean.min():.2f} to {mass_clean.max():.2f}")
+    print(f"Radius range: {radius_clean.min():.3f} to {radius_clean.max():.2f} kpc")
+    
+    if len(mass_clean) == 0:
+        print("No valid samples for hexbin plot!")
+        return
+    
+    # **CRITICAL FIX**: Transform radius to log space BEFORE hexbin
+    # This ensures hexagons maintain their shape on the log-scale plot
+    log_radius_clean = np.log10(radius_clean)
+    
+    # Calculate extent in transformed coordinates
+    mass_extent = [mass_clean.min() - 0.1, mass_clean.max() + 0.1]
+    log_radius_extent = [np.log10(0.05), np.log10(15.0)]  # Physical limits in log space
+    extent = [mass_clean.min(), mass_clean.max(), 0.05, 15]
 
+    
+    # Create hexbin in linear space (mass vs log_radius)
+    hb = plt.hexbin(
+        mass_clean, radius_clean,  # Use log-transformed radius
+        gridsize=35,
+        bins='log',
+        cmap='Blues',
+        mincnt=5,
+        alpha=0.7,
+        extent=extent,
+        zorder=1
+    )
+    
+    # Add colorbar
+    cb = plt.colorbar(hb, label='log₁₀(MC samples)', shrink=0.8, pad=0.02)
+    cb.ax.tick_params(labelsize=10)
+    
+    # **BINNED STATISTICS** (same as before, but plotted in log space)
+    mass_range = np.nanmax(stellar_mass) - np.nanmin(stellar_mass)
+    bins = np.linspace(np.nanmin(stellar_mass) - 0.05*mass_range, 
+                      np.nanmax(stellar_mass) + 0.05*mass_range, nbins + 1)
+    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+    
+    # Other galaxies (not extreme PSBs)
+    medians_other, lower_other, upper_other = [], [], []
+    for i in range(nbins):
+        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & (~is_extreme_psb)
+        vals = radius_kpc[mask]
+        if np.sum(mask) >= 2:
+            medians_other.append(np.nanmedian(vals))
+            lower_other.append(np.nanpercentile(vals, 16))
+            upper_other.append(np.nanpercentile(vals, 84))
+        else:
+            medians_other.append(np.nan)
+            lower_other.append(np.nan)
+            upper_other.append(np.nan)
+    
+    plt.errorbar(
+        bin_centers, medians_other, 
+        yerr=[np.array(medians_other)-np.array(lower_other), 
+              np.array(upper_other)-np.array(medians_other)],
+        fmt='o-', color='red', alpha=1.0, linewidth=3, markersize=8,
+        markeredgecolor='darkred', markeredgewidth=1.5,
+        zorder=10, label='Other galaxies (median ± 1σ)',
+        capsize=4, capthick=2
+    )
+
+    # Extreme PSBs
+    medians_psb, lower_psb, upper_psb = [], [], []
+    for i in range(nbins):
+        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & is_extreme_psb
+        vals = radius_kpc[mask]
+        if np.sum(mask) >= 2:
+            medians_psb.append(np.nanmedian(vals))
+            lower_psb.append(np.nanpercentile(vals, 16))
+            upper_psb.append(np.nanpercentile(vals, 84))
+        else:
+            medians_psb.append(np.nan)
+            lower_psb.append(np.nan)
+            upper_psb.append(np.nan)
+    
+    plt.errorbar(
+        bin_centers, medians_psb, 
+        yerr=[np.array(medians_psb)-np.array(lower_psb), 
+              np.array(upper_psb)-np.array(medians_psb)],
+        fmt='s-', color='navy', alpha=1.0, linewidth=3, markersize=8,
+        markeredgecolor='white', markeredgewidth=1.5,
+        zorder=11, label='Extreme PSBs (median ± 1σ)',
+        capsize=4, capthick=2
+    )
+    
+    # External comparison data
+    try:
+        external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
+        external_table = load_fits_table(external_fits, hdu_index=1)
+        external_mass = external_table['stellar_mass_50']
+        external_radius_kpc = external_table['re_kpc']
+        
+        valid_ext = (
+            (external_mass > 6.0) & (external_mass < 12.0) &
+            (external_radius_kpc > 0.05) & (external_radius_kpc < 15.0) &
+            np.isfinite(external_mass) & np.isfinite(external_radius_kpc)
+        )
+        
+        plt.scatter(
+            external_mass[valid_ext], external_radius_kpc[valid_ext],
+            marker='D', facecolors='gold', edgecolors='darkorange', 
+            s=40, alpha=0.8, linewidth=1, zorder=12,
+            label='Westcott: EPOCHS-XI'
+        )
+    except Exception as e:
+        print(f"Could not load external comparison data: {e}")
+
+    # **SET LOG SCALE AFTER CREATING HEXBIN**
+    plt.yscale('log')
+    
+    # Formatting
+    plt.xlabel('Stellar Mass (log₁₀ M☉)', fontsize=14, fontweight='bold')
+    plt.ylabel('Effective Radius (kpc)', fontsize=14, fontweight='bold')
+    plt.title('Stellar Mass vs Effective Radius\nMonte Carlo Distribution + Binned Trends', 
+              fontsize=16, fontweight='bold', pad=20)
+    
+    # Mass completeness line
+    plt.axvline(8.1, color='gray', linestyle='--', linewidth=3, alpha=0.8, 
+                label='90% mass completeness', zorder=5)
+    
+    # Set axis limits in actual coordinates (matplotlib handles the log transform)
+    plt.xlim(mass_extent[0], mass_extent[1])
+    plt.ylim(0.05, 15.0)  # Linear limits, will be transformed to log
+    
+    # Grid and legend
+    plt.grid(True, linestyle=':', alpha=0.5, zorder=0)
+    plt.legend(fontsize=11, loc='upper left', framealpha=0.9)
+    plt.tight_layout()
+    
+    # Statistics text box
+    textstr = f'MC samples: {len(mass_clean):,}\nRadius: {radius_clean.min():.2f}-{radius_clean.max():.2f} kpc'
+    props = dict(boxstyle='round', facecolor='white', alpha=0.8)
+    plt.text(0.02, 0.98, textstr, transform=plt.gca().transAxes, fontsize=10,
+             verticalalignment='top', bbox=props)
+    
+    if savefig:
+        plt.savefig(savefig, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"Saved fixed hexbin plot to {savefig}")
+    
+    plt.show()
+    plt.close()
 
 def main(
     phot_fits, bagpipes_fits, galfit_fits, 
-    filter_name='F444W', phot_idcol='NUMBER', bagpipes_idcol='#ID'
+    filter_name='F444W', phot_idcol='NUMBER', bagpipes_idcol='#ID',     
+    pdf_dir = "/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/pipes/pdfs/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/temp/stellar_mass"
 ):
-    # Load your tables as before:
+    # Load tables (existing code)
     table_objects = load_fits_table(phot_fits, hdu_index=1)
     with fits.open(bagpipes_fits) as hdulist:
         table_bagpipes = Table(hdulist[4].data)
     table_galfit = load_fits_table(galfit_fits, hdu_index=1)
 
-    # Match ALL THREE by ID:
+    # Match tables (existing code)
     table_objects_matched, table_bagpipes_matched, table_galfit_matched = match_three_tables_by_id(
         table_objects, table_bagpipes, table_galfit,
         phot_idcol, bagpipes_idcol, 'id'
     )
 
-    # Scale mass and SFR
+    # Scale mass and SFR (existing code)
     R = compute_flux_ratio(table_objects_matched, filter_name)
     logR = np.log10(R)
     scale_mass_sfr_log(table_bagpipes_matched, logR)
 
-    # Extract redshifts and compute radius in kpc
+    # Extract redshifts and compute radius
     redshifts = table_bagpipes_matched['input_redshift']
     radius_kpc = get_radius_kpc(table_galfit_matched, redshifts)
 
-    # Mask for reliable fits
+    # **CRITICAL FIX**: Apply reliability mask AND physical constraints
     reliable_mask = flag_unreliable_fits(table_galfit_matched, radius_kpc, redshifts)
-    radius_kpc_clean = radius_kpc[reliable_mask]
+    
+    # Additional physical constraints
+    physical_mask = (radius_kpc > 0.05) & (radius_kpc < 15.0) & np.isfinite(radius_kpc)
+    
+    # Combine masks
+    final_mask = reliable_mask & physical_mask
+    
+    print(f"Reliable fits: {np.sum(reliable_mask)} out of {len(reliable_mask)}")
+    print(f"Physical constraints: {np.sum(physical_mask)} out of {len(physical_mask)}")
+    print(f"Final sample: {np.sum(final_mask)} galaxies")
 
-    # Apply mask to Bagpipes parameters (assumes ordering matches GALFIT)
-    stellar_mass_scaled = table_bagpipes_matched['stellar_mass_50'][reliable_mask]
-    burstiness_clean = table_bagpipes_matched['burstiness_50'][reliable_mask]
-    halpha_clean = table_bagpipes_matched['Halpha_EW_rest_50'][reliable_mask]
+    # Apply final mask
+    radius_kpc_clean = radius_kpc[final_mask]
+    stellar_mass_scaled = table_bagpipes_matched['stellar_mass_50'][final_mask]
+    burstiness_clean = table_bagpipes_matched['burstiness_50'][final_mask]
+    halpha_clean = table_bagpipes_matched['Halpha_EW_rest_50'][final_mask]
+    redshifts_clean = redshifts[final_mask]
 
     # Extreme PSB mask
     is_extreme_psb = (burstiness_clean <= 1) & (halpha_clean <= 100)
     
-    plot_binned_mass_vs_radius(stellar_mass_scaled, radius_kpc_clean, is_extreme_psb, nbins=16, savefig='binned_mass_vs_radius.png')
-    mass_cut_mask = stellar_mass_scaled > 8.1
-    plot_binned_redshift_vs_radius(redshifts[reliable_mask][mass_cut_mask], radius_kpc_clean[mass_cut_mask], is_extreme_psb[mass_cut_mask], nbins=12, savefig='binned_redshift_vs_radius_masscut.png', mass_cut_applied=True)
+    # **ONLY SAMPLE FROM CLEAN, RELIABLE GALAXIES**
+    mass_samples, radius_samples = monte_carlo_mass_radius(
+        table_galfit_matched[final_mask], table_bagpipes_matched[final_mask],
+        pdf_dir, id_column='id', n_samples=500
+    )
 
-
+    # Create improved plot
+    plot_mass_vs_radius_with_hexbin(
+        mass_samples, radius_samples,
+        stellar_mass_scaled, radius_kpc_clean, is_extreme_psb,
+        nbins=16, savefig='mass_vs_radius_hexbin_fixed.png'
+    )
 
 if __name__ == "__main__":
     main(
@@ -381,5 +639,7 @@ if __name__ == "__main__":
         phot_idcol='NUMBER',
         bagpipes_idcol='#ID'
     )
+
+
 
 
