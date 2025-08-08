@@ -172,8 +172,8 @@ yerr_alba = np.array([alba_err_lower, alba_err_upper])
 n_iter = 1000
 
 # Create masks for defining post-starburst galaxies
-low_burst_mask = (burstiness < 1) & (halpha < 200)
-high_burst_mask = (burstiness >= 1) & (halpha >=200)
+low_burst_mask = (burstiness <= 1) & (halpha <= 100)
+high_burst_mask = (burstiness > 1) & (halpha >100)
 balmer_low_burst = balmer_breaks[low_burst_mask]
 balmer_high_burst = balmer_breaks[high_burst_mask]
 
@@ -250,15 +250,15 @@ nonzero_mask2 = counts_high > 0
 plt.figure(figsize=(8, 6), facecolor = 'white')
 plt.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1], yerr=errors_low[nonzero_mask1], fmt='o', color='blue', capsize=3)
 plt.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2], yerr=errors_high[nonzero_mask2], fmt='o', color='red', capsize=3)
-plt.plot(x_vals, gauss_low, 'b--', label=f'Burstiness <1, halpha <200: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
-plt.plot(x_vals, gauss_high, 'r--', label=f'Burstiness >=1, halpha > 200: μ={mu_high_mean:.2f}±{mu_high_std:.2f}, σ={sigma_high_mean:.2f}±{sigma_high_std:.2f}') 
-plt.plot(x_vals, gauss_alba, 'g--', label=f'Covelo-Paz+25 Gaussian: μ={mu_alba:.2f}, σ={sigma_alba:.2f}')
+plt.plot(x_vals, gauss_low, 'b--', label=f'Burstiness <=1, halpha <=100: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
+plt.plot(x_vals, gauss_high, 'r--', label=f'Burstiness >1, halpha > 100: μ={mu_high_mean:.2f}±{mu_high_std:.2f}, σ={sigma_high_mean:.2f}±{sigma_high_std:.2f}') 
+# plt.plot(x_vals, gauss_alba, 'g--', label=f'Covelo-Paz+25 Gaussian: μ={mu_alba:.2f}, σ={sigma_alba:.2f}')
 # plt.step(bin_centres, counts_alba, where='mid', color='green', label='Alba+25 (n=14)')
-plt.errorbar(alba_bb, y_alba, yerr=yerr_alba, fmt='o', color='green', capsize=3)
+# plt.errorbar(alba_bb, y_alba, yerr=yerr_alba, fmt='o', color='green', capsize=3)
 plt.xlabel("Balmer Break Strength (mag)")
 plt.ylabel("Number of Galaxies")
 plt.ylabel("Probability Density")
-plt.xlim(-0.5, 3.5)
+plt.xlim(-0.5, 1.5)
 plt.ylim(0, 5.5)
 plt.legend()
 plt.tight_layout()
