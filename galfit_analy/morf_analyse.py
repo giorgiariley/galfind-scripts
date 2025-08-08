@@ -34,12 +34,12 @@ def make_ca_plot(conc, log_asym, title='Concentration–Asymmetry Diagram',
     non_psb = ~colour
     plt.scatter(conc[non_psb], log_asym[non_psb],
                 color='tomato', alpha=0.7, s=20,
-                edgecolor='none', label='Burstiness >1, Halpha EW >200Å')
+                edgecolor='none', label='Burstiness >1, Halpha EW >100Å')
 
     # Plot PSBs on top
     plt.scatter(conc[colour], log_asym[colour],
                 color='royalblue', alpha=0.8, s=20,
-                edgecolor='none', label='Burstiness<=1, Halpha EW<=200Å')
+                edgecolor='none', label='Burstiness<=1, Halpha EW<=100Å')
 
     if add_bershady:
         add_bershady_boundaries()
@@ -107,7 +107,7 @@ if __name__ == "__main__":
 
     halpha = table_bagpipes['Halpha_EW_rest_50']
     burstiness = table_bagpipes['burstiness_50']
-    is_extreme_psb = (halpha <= 200) & (burstiness < 1)
+    is_extreme_psb = (halpha <= 100) & (burstiness <= 1)
     make_ca_plot(conc, log_asym,
              title="C–log(A) Plot with Extreme PSBs Highlighted",
              colour=is_extreme_psb,  # Boolean mask
