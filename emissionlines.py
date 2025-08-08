@@ -182,7 +182,7 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
 
     special = (burst <= 1) & (Ha_rest <= 100)
     other = ~special
-
+    print(len(X[special]), len(Y[special]), len(X[other]), len(Y[other]))
     plt.figure(figsize=(8,6), facecolor='white')
     # red points and errors
     plt.scatter(X[other], Y[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
