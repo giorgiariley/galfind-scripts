@@ -4,189 +4,213 @@ from astropy.io import fits
 from astropy.table import Table
 
 def load_bagpipes_table(fits_path):
-    """Load the Bagpipes output table from a FITS file."""
     with fits.open(fits_path) as hdulist:
         table = Table(hdulist[1].data)
     return table
 
+def _p16_p50_p84(table, col50):
+    if not col50.endswith('_50'):
+        raise ValueError(f"Expected a _50 column, got {col50}")
+    stem = col50[:-3]
+    p50 = table[col50]
+    p16 = table[stem + '_16'] if (stem + '_16') in table.colnames else None
+    p84 = table[stem + '_84'] if (stem + '_84') in table.colnames else None
+    return p16, p50, p84
+
 def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
-    """
-    Generic plotting function for emission line EW vs. UV colour.
-    
-    Parameters:
-    - table: astropy Table
-    - line_column: name of the EW column in table (e.g., 'OIII_5007_EW_obs_50')
-    - line_label: label to display on y-axis (e.g., '[OIII] 5007 Å')
-    - output_path: where to save the plot
-    """
-    EWs_obs = table[line_column]
-    UV = table['UV_colour_50']
-    burstiness = table['burstiness_50']
-    
+    # y
+    y16, y50, y84 = _p16_p50_p84(table, line_column)
+    # x
+    x16, x50, x84 = _p16_p50_p84(table, 'UV_colour_50') if 'UV_colour_50' in table.colnames else (None, table['UV_colour_50'], None)
 
-    valid = (EWs_obs > 0) & np.isfinite(EWs_obs) & np.isfinite(burstiness)
-    EWs = table[line_column] / (1 + table['input_redshift'])
+    burst = table['burstiness_50']
+    Ha_rest_50 = table['Halpha_EW_rest_50']
 
-    # Additional filter for Hα outliers
-    if line_column.lower().startswith("halpha"):
-        valid &= EWs < 30000  # remove extreme values
+    # validity
+    valid = np.isfinite(y50) & np.isfinite(x50) & np.isfinite(burst) & np.isfinite(Ha_rest_50) & (y50 > 0)
 
-    EWs = EWs[valid]
-    UV = UV[valid]
-    burstiness = burstiness[valid]
+    x = x50[valid]
+    y = y50[valid]
+    burst = burst[valid]
+    Ha_rest = Ha_rest_50[valid]
 
-    mask_low_b = burstiness < 1
-    mask_high_b = burstiness >= 1
+    # asymmetric errors if present
+    def asy(err16, mid, err84):
+        if err16 is None or err84 is None:
+            return None
+        err16 = err16[valid]; err84 = err84[valid]
+        lower = mid - err16
+        upper = err84 - mid
+        return np.vstack([lower, upper])
 
-    plt.figure(figsize=(8, 6), facecolor='white')
-    plt.scatter(UV[mask_low_b], EWs[mask_low_b], color='steelblue', alpha=0.6, label='SFR ratio < 1', edgecolor='none')
-    plt.scatter(UV[mask_high_b], EWs[mask_high_b], color='tomato', alpha=0.6, label='SFR ratio ≥ 1', edgecolor='none')
+    xerr = asy(x16, x50, x84) if isinstance(x50, np.ndarray) else None
+    yerr = asy(y16, y50, y84)
+
+    # coloring rule: special vs other
+    special = (burst <= 1) & (Ha_rest <= 100)
+    other = ~special
+
+    plt.figure(figsize=(8,6), facecolor='white')
+    # red points and errors
+    plt.scatter(x[other], y[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            x[other], y[other],
+            xerr=xerr[:, other] if xerr is not None else None,
+            yerr=yerr[:, other] if yerr is not None else None,
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+        )
+
+    # blue points and errors on top
+    plt.scatter(x[special], y[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            x[special], y[special],
+            xerr=xerr[:, special] if xerr is not None else None,
+            yerr=yerr[:, special] if yerr is not None else None,
+            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+        )
 
     plt.xlabel("UV Colour (mag)")
     plt.ylabel(f"{line_label} Equivalent Width (Å)")
     plt.title(f"{line_label} EW vs. UV Colour")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
+    plt.grid(True); plt.legend(); plt.tight_layout()
+    plt.savefig(output_path, dpi=200); plt.close()
     print(f"Saved plot to: {output_path}")
 
 def plot_Halpha_vs_OIII(table, output_path):
-    """
-    Plot Hα EW vs. [OIII] EW in rest-frame, coloured by burstiness.
-    """
     z = table['input_redshift']
-    EW_Halpha_obs = table['Halpha_EW_obs_50']
-    EW_OIII_obs = table['OIII_5007_EW_obs_50']
-    burstiness = table['burstiness_50']
 
-    # Convert to rest-frame
-    EW_Halpha_rest = EW_Halpha_obs / (1 + z)
-    EW_OIII_rest = EW_OIII_obs / (1 + z)
+    # use observed percentiles, convert to rest after
+    Ha16, Ha50, Ha84 = _p16_p50_p84(table, 'Halpha_EW_obs_50')
+    O316, O350, O384 = _p16_p50_p84(table, 'OIII_5007_EW_obs_50')
 
-    # Validity mask
+    burst = table['burstiness_50']
+    Ha_rest_50 = table['Halpha_EW_rest_50']
+
     valid = (
-        np.isfinite(EW_Halpha_rest) & np.isfinite(EW_OIII_rest) & np.isfinite(burstiness) &
-        (EW_Halpha_rest > 0) & (EW_OIII_rest > 0) &
-        (EW_Halpha_rest < 3000)  # Adjusted threshold for rest-frame
+        np.isfinite(z) & np.isfinite(Ha50) & np.isfinite(O350) &
+        np.isfinite(burst) & np.isfinite(Ha_rest_50) &
+        (Ha50 > 0) & (O350 > 0)
     )
 
-    EW_Halpha_rest = EW_Halpha_rest[valid]
-    EW_OIII_rest = EW_OIII_rest[valid]
-    burstiness = burstiness[valid]
+    # convert to rest
+    Ha  = (Ha50 / (1 + z))[valid]
+    O3  = (O350 / (1 + z))[valid]
+    burst = burst[valid]
+    Ha_rest = Ha_rest_50[valid]
 
-    # Burstiness mask
-    mask_low_b = burstiness < 1
-    mask_high_b = burstiness >= 1
+    def asy_rest(p16, p50, p84):
+        if p16 is None or p84 is None:
+            return None
+        p16 = (p16 / (1 + z))[valid]; p84 = (p84 / (1 + z))[valid]
+        lower = p50[valid]/(1+z[valid]) - p16
+        upper = p84 - p50[valid]/(1+z[valid])
+        return np.vstack([lower, upper])
 
-    # Plotting
-    plt.figure(figsize=(8, 6), facecolor='white')
-    plt.scatter(EW_OIII_rest[mask_low_b], EW_Halpha_rest[mask_low_b],
-                color='steelblue', alpha=0.6, label='SFR ratio < 1', edgecolor='none')
-    plt.scatter(EW_OIII_rest[mask_high_b], EW_Halpha_rest[mask_high_b],
-                color='tomato', alpha=0.6, label='SFR ratio ≥ 1', edgecolor='none')
+    xerr = asy_rest(O316, O350, O384)
+    yerr = asy_rest(Ha16, Ha50, Ha84)
 
-    plt.xlabel("[OIII] 5007 Å Equivalent Width (rest-frame Å)")
-    plt.ylabel("Hα Equivalent Width (rest-frame Å)")
-    plt.title("Hα vs. [OIII] Equivalent Width (Rest-frame)")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
+    special = (burst <= 1) & (Ha_rest <= 100)
+    other = ~special
+
+    plt.figure(figsize=(8,6), facecolor='white')
+    # red points and errors
+    plt.scatter(O3[other], Ha[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            O3[other], Ha[other],
+            xerr=xerr[:, other] if xerr is not None else None,
+            yerr=yerr[:, other] if yerr is not None else None,
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+        )
+
+    # blue points and errors on top
+    plt.scatter(O3[special], Ha[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            O3[special], Ha[special],
+            xerr=xerr[:, special] if xerr is not None else None,
+            yerr=yerr[:, special] if yerr is not None else None,
+            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+        )
+
+    plt.xlabel("[OIII] 5007 EW (rest-frame Å)")
+    plt.ylabel("Hα EW (rest-frame Å)")
+    plt.title("Hα vs [OIII] with asymmetric errors")
+    plt.grid(True); plt.legend(); plt.tight_layout()
+    plt.savefig(output_path, dpi=200); plt.close()
     print(f"📁 Saved Hα vs. [OIII] rest-frame plot to: {output_path}")
 
 def plot_HaNII_vs_OIIIHb(table, output_path):
-    """
-    Plot (Hα + [NII]) vs ([OIII] + Hβ) in rest-frame with 1σ error bars,
-    coloured by burstiness. EWs are summed, and errors are combined in quadrature.
-    """
-
-    # === Extract observed EWs and percentiles ===
-    Ha_50 = table['Halpha_EW_obs_50']
-    NII_6548_50 = table['NII_6548_EW_obs_50']
-    NII_6584_50 = table['NII_6584_EW_obs_50']
-    OIII_5007_50 = table['OIII_5007_EW_obs_50']
-    OIII_4959_50 = table['OIII_4959_EW_obs_50']
-    Hb_50 = table['Hbeta_EW_obs_50']
-
-    # Error estimates (1σ from percentiles)
-    def error(line):
-        return 0.5 * (table[f"{line}_EW_obs_84"] - table[f"{line}_EW_obs_16"])
-
-    Ha_err = error("Halpha")
-    NII_6548_err = error("NII_6548")
-    NII_6584_err = error("NII_6584")
-    OIII_5007_err = error("OIII_5007")
-    OIII_4959_err = error("OIII_4959")
-    Hb_err = error("Hbeta")
-
-    # === Sum EWs ===
-    EW_Ha_NII_obs = Ha_50 + NII_6548_50 + NII_6584_50
-    EW_OIII_Hb_obs = OIII_5007_50 + OIII_4959_50 + Hb_50
-
-    # === Combine errors in quadrature ===
-    err_Ha_NII_obs = np.sqrt(Ha_err**2 + NII_6548_err**2 + NII_6584_err**2)
-    err_OIII_Hb_obs = np.sqrt(OIII_5007_err**2 + OIII_4959_err**2 + Hb_err**2)
-
     z = table['input_redshift']
-    burstiness = table['burstiness_50']
+    burst = table['burstiness_50']
+    Ha_rest_50 = table['Halpha_EW_rest_50']
 
-    # === Convert to rest-frame ===
-    EW_Ha_NII = EW_Ha_NII_obs / (1 + z)
-    EW_OIII_Hb = EW_OIII_Hb_obs / (1 + z)
-    err_Ha_NII = err_Ha_NII_obs / (1 + z)
-    err_OIII_Hb = err_OIII_Hb_obs / (1 + z)
+    # components, observed percentiles
+    comps_left  = ['Halpha_EW_obs', 'NII_6548_EW_obs', 'NII_6584_EW_obs']
+    comps_right = ['OIII_5007_EW_obs', 'OIII_4959_EW_obs', 'Hbeta_EW_obs']
 
-    # === Validity mask ===
+    def sum_p(table, comps, suffix):
+        return np.sum([table[f"{c}_{suffix}"] for c in comps], axis=0)
+
+    L16, L50, L84 = sum_p(table, comps_left, '16'), sum_p(table, comps_left, '50'), sum_p(table, comps_left, '84')
+    R16, R50, R84 = sum_p(table, comps_right,'16'), sum_p(table, comps_right,'50'), sum_p(table, comps_right,'84')
+
     valid = (
-        np.isfinite(EW_Ha_NII) & np.isfinite(EW_OIII_Hb) & np.isfinite(burstiness) &
-        np.isfinite(err_Ha_NII) & np.isfinite(err_OIII_Hb) &
-        (EW_Ha_NII > 0) & (EW_OIII_Hb > 0) &
-        ((EW_Ha_NII - err_Ha_NII) > 0) &
-        ((EW_OIII_Hb - err_OIII_Hb) > 0)
-)
+        np.isfinite(z) & np.isfinite(L50) & np.isfinite(R50) &
+        np.isfinite(burst) & np.isfinite(Ha_rest_50) &
+        (L50 > 0) & (R50 > 0)
+    )
 
+    # to rest
+    X = (R50 / (1 + z))[valid]
+    Y = (L50 / (1 + z))[valid]
+    burst = burst[valid]
+    Ha_rest = Ha_rest_50[valid]
 
-    EW_Ha_NII = EW_Ha_NII[valid]
-    EW_OIII_Hb = EW_OIII_Hb[valid]
-    err_Ha_NII = err_Ha_NII[valid]
-    err_OIII_Hb = err_OIII_Hb[valid]
-    burstiness = burstiness[valid]
+    def asy_sum_rest(p16, p50, p84):
+        p16 = (p16 / (1 + z))[valid]
+        p84 = (p84 / (1 + z))[valid]
+        mid = (p50 / (1 + z))[valid]
+        lower = mid - p16
+        upper = p84 - mid
+        return np.vstack([lower, upper])
 
-    # === Colour-code by burstiness ===
-    mask_low_b =  (burstiness < 2) & (burstiness >= 0.5)
-    mask_high_b = burstiness >= 2
-    mask_lowest_b = burstiness < 0.5
+    xerr = asy_sum_rest(R16, R50, R84)
+    yerr = asy_sum_rest(L16, L50, L84)
 
-    # === Plot ===
-    plt.figure(figsize=(8, 6), facecolor='white')
+    special = (burst <= 1) & (Ha_rest <= 100)
+    other = ~special
 
-    # Low burstiness (blue)
-    plt.errorbar(EW_OIII_Hb[mask_low_b], EW_Ha_NII[mask_low_b],
-                 xerr=err_OIII_Hb[mask_low_b], yerr=err_Ha_NII[mask_low_b],
-                 fmt='o', color='steelblue', alpha=0.5, label='burstiness < 2', capsize=2)
+    plt.figure(figsize=(8,6), facecolor='white')
+    # red points and errors
+    plt.scatter(X[other], Y[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            X[other], Y[other],
+            xerr=xerr[:, other] if xerr is not None else None,
+            yerr=yerr[:, other] if yerr is not None else None,
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+        )
 
-    # High burstiness (red)
-    plt.errorbar(EW_OIII_Hb[mask_high_b], EW_Ha_NII[mask_high_b],
-                 xerr=err_OIII_Hb[mask_high_b], yerr=err_Ha_NII[mask_high_b],
-                 fmt='o', color='tomato', alpha=0.5, label='burstiness ≥ 2', capsize=2)
-    
-    # Lowest burstiness (green)
-    plt.errorbar(EW_OIII_Hb[mask_lowest_b], EW_Ha_NII[mask_lowest_b],
-                 xerr=err_OIII_Hb[mask_lowest_b], yerr=err_Ha_NII[mask_lowest_b],
-                 fmt='o', color='forestgreen', alpha=0.5, label='burstiness < 0.5', capsize=2)
+    # blue points and errors on top
+    plt.scatter(X[special], Y[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    if xerr is not None or yerr is not None:
+        plt.errorbar(
+            X[special], Y[special],
+            xerr=xerr[:, special] if xerr is not None else None,
+            yerr=yerr[:, special] if yerr is not None else None,
+            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+        )
 
-    plt.xlabel("[OIII] + Hβ Equivalent Width (rest-frame Å)")
-    plt.ylabel("Hα + [NII] Equivalent Width (rest-frame Å)")
-    plt.title("(Hα + [NII]) vs ([OIII] + Hβ) EW with Burstiness Colour Coding")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path)
-    plt.close()
+    plt.xlabel("[OIII] + Hβ EW (rest-frame Å)")
+    plt.ylabel("Hα + [NII] EW (rest-frame Å)")
+    plt.title("(Hα + [NII]) vs ([OIII] + Hβ) with asymmetric errors")
+    plt.grid(True); plt.legend(); plt.tight_layout()
+    plt.savefig(output_path, dpi=200); plt.close()
     print(f"📁 Saved plot with error bars to: {output_path}")
+
 
 
 
@@ -198,7 +222,7 @@ def main():
     # Plot [OIII] EW
     plot_EW_vs_UV_colour(
         table=table_pipes,
-        line_column='OIII_5007_EW_obs_50',
+        line_column='OIII_5007_EW_rest_50',
         line_label='[OIII] 5007 Å',
         output_path="OIII_EW_vs_UV_colour.png"
     )
@@ -206,7 +230,7 @@ def main():
     # Plot Hα EW
     plot_EW_vs_UV_colour(
         table=table_pipes,
-        line_column='Halpha_EW_obs_50',
+        line_column='Halpha_EW_rest_50',
         line_label='Hα',
         output_path="Halpha_EW_vs_UV_colour.png"
     )
