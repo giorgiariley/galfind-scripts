@@ -13,6 +13,30 @@ from scipy.stats import norm
 from galfind import galfind_logger, Multiple_Mask_Selector, Multiple_SED_fit_Selector, Min_Instrument_Unmasked_Band_Selector, Unmasked_Band_Selector, Bluewards_LyLim_Non_Detect_Selector, Bluewards_Lya_Non_Detect_Selector, Redwards_Lya_Detect_Selector, Chi_Sq_Lim_Selector, Chi_Sq_Diff_Selector, Robust_zPDF_Selector, Sextractor_Bands_Radius_Selector    
 from scipy.stats import ks_2samp
 from scipy.interpolate import interp1d
+from sklearn.mixture import GaussianMixture
+from scipy.stats import skewnorm  # optional, if you want to try skew-normal too
+from scipy.stats import exponnorm  # exGaussian = Gaussian * Exp
+
+
+def fit_best_gmm(x, max_k=3, n_init=10, random_state=0):
+    """Return the BIC-best 1D GMM on data x."""
+    X = np.asarray(x).reshape(-1, 1)
+    best, best_bic = None, np.inf
+    for k in range(1, max_k + 1):
+        gmm = GaussianMixture(n_components=k, covariance_type='full',
+                              n_init=n_init, random_state=random_state)
+        gmm.fit(X)
+        bic = gmm.bic(X)
+        if bic < best_bic:
+            best_bic, best = bic, gmm
+    return best
+
+def gmm_pdf_on_grid(gmm, grid):
+    """Evaluate a 1D GMM PDF on grid."""
+    pdf = np.zeros_like(grid, dtype=float)
+    for w, m, C in zip(gmm.weights_, gmm.means_.ravel(), gmm.covariances_.ravel()):
+        pdf += w * norm.pdf(grid, loc=m, scale=np.sqrt(C))
+    return pdf
 
 
 #selecting the sample that consists of (hopefully) only galaxies and gets rid of any nonsense!
@@ -173,7 +197,7 @@ n_iter = 1000
 
 # Create masks for defining post-starburst galaxies
 low_burst_mask = (burstiness <= 1) & (halpha <= 100)
-high_burst_mask = (burstiness > 1) & (halpha >100)
+high_burst_mask = ~low_burst_mask
 balmer_low_burst = balmer_breaks[low_burst_mask]
 balmer_high_burst = balmer_breaks[high_burst_mask]
 
@@ -216,22 +240,54 @@ gauss_low = norm.pdf(x_vals, mu_low_mean, sigma_low_mean)
 gauss_high = norm.pdf(x_vals, mu_high_mean, sigma_high_mean)
 
 
-# Histogram binning
+# --- Bin setup ---
 bins = np.linspace(x_min, x_max, 60)
 bin_centres = 0.5 * (bins[1:] + bins[:-1])
+bin_width = bins[1] - bins[0]
+
+# Histograms in density units
 counts_low, _ = np.histogram(balmer_low_burst, bins=bins, density=True)
 counts_high, _ = np.histogram(balmer_high_burst, bins=bins, density=True)
-# Use raw histogram (not density=True) for error estimation
+
+# Raw counts for Poisson errors
 raw_counts_low, _ = np.histogram(balmer_low_burst, bins=bins)
 raw_counts_high, _ = np.histogram(balmer_high_burst, bins=bins)
 
-# Scale factor for converting to density
-scale_low = len(balmer_low_burst) * bin_width
-scale_high = len(balmer_high_burst) * bin_width
+# Poisson errors converted to density units
+errors_low = np.sqrt(raw_counts_low) / (len(balmer_low_burst) * bin_width)
+errors_high = np.sqrt(raw_counts_high) / (len(balmer_high_burst) * bin_width)
 
-# Now get the Poisson errors in density units
-errors_low = np.sqrt(raw_counts_low) / scale_low
-errors_high = np.sqrt(raw_counts_high) / scale_high
+# --- PDF grid for smooth curves ---
+x_vals = np.linspace(x_min, x_max, 500)
+
+# Scale MC Gaussians to density
+pdf_low_all = np.array([
+    norm.pdf(x_vals, mu, sigma)
+    for mu, sigma in zip(mu_low_arr, sigma_low_arr)
+])
+# ----- Red distribution: bootstrap fits with an exGaussian (exponnorm) -----
+rng = np.random.default_rng(42)
+pdf_high_list = []
+
+for _ in range(n_iter):
+    sample = rng.choice(balmer_high_burst, size=len(balmer_high_burst), replace=True)
+    # Fit exGaussian (shape K = tau/sigma)
+    # You can pass a starting guess if it ever struggles; default MLE usually works.
+    k, loc, scale = exponnorm.fit(sample)
+    pdf_high_list.append(exponnorm.pdf(x_vals, k, loc=loc, scale=scale))
+
+pdf_high_all = np.array(pdf_high_list)
+
+
+# Median PDFs
+pdf_low_median = np.median(pdf_low_all, axis=0)
+pdf_high_median = np.median(pdf_high_all, axis=0)
+
+# 16–84% envelopes for shading
+pdf_low_p16 = np.percentile(pdf_low_all, 16, axis=0)
+pdf_low_p84 = np.percentile(pdf_low_all, 84, axis=0)
+pdf_high_p16 = np.percentile(pdf_high_all, 16, axis=0)
+pdf_high_p84 = np.percentile(pdf_high_all, 84, axis=0)
 
 #-------Gaussian for alba
 # Interpolate histogram density values at Alba+25 points:
@@ -246,23 +302,35 @@ nonzero_mask1 = counts_low > 0
 nonzero_mask2 = counts_high > 0
 
 
-# Plot both histograms
-plt.figure(figsize=(8, 6), facecolor = 'white')
-plt.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1], yerr=errors_low[nonzero_mask1], fmt='o', color='blue', capsize=3)
-plt.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2], yerr=errors_high[nonzero_mask2], fmt='o', color='red', capsize=3)
-plt.plot(x_vals, gauss_low, 'b--', label=f'Burstiness <=1, halpha <=100: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
-plt.plot(x_vals, gauss_high, 'r--', label=f'Burstiness >1, halpha > 100: μ={mu_high_mean:.2f}±{mu_high_std:.2f}, σ={sigma_high_mean:.2f}±{sigma_high_std:.2f}') 
-# plt.plot(x_vals, gauss_alba, 'g--', label=f'Covelo-Paz+25 Gaussian: μ={mu_alba:.2f}, σ={sigma_alba:.2f}')
-# plt.step(bin_centres, counts_alba, where='mid', color='green', label='Alba+25 (n=14)')
-# plt.errorbar(alba_bb, y_alba, yerr=yerr_alba, fmt='o', color='green', capsize=3)
+# --- Plot ---
+plt.figure(figsize=(8, 6), facecolor='white')
+
+# Error bars
+nonzero_mask1 = counts_low > 0
+nonzero_mask2 = counts_high > 0
+plt.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1],
+             yerr=errors_low[nonzero_mask1], fmt='o', color='blue', capsize=3, zorder=3)
+plt.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2],
+             yerr=errors_high[nonzero_mask2], fmt='o', color='red', capsize=3, zorder=3)
+
+# Shaded MC ranges
+plt.fill_between(x_vals, pdf_low_p16,  pdf_low_p84,  color='blue', alpha=0.2)
+plt.fill_between(x_vals, pdf_high_p16, pdf_high_p84, color='red', alpha=0.15)
+
+# Median curves
+plt.plot(x_vals, pdf_low_median,  'b--',
+         label=f'Burstiness <= 1, Hα <= 100: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
+plt.plot(x_vals, pdf_high_median, 'r--', label='Other: exGaussian (bootstrap median)')
+
+
+# Labels & limits
 plt.xlabel("Balmer Break Strength (mag)")
-plt.ylabel("Number of Galaxies")
 plt.ylabel("Probability Density")
 plt.xlim(-0.5, 1.5)
-plt.ylim(0, 5.5)
+plt.ylim(0, max(counts_low.max(), counts_high.max()) * 1.2)
 plt.legend()
 plt.tight_layout()
-plt.savefig("balmer_break_comparison.png")
+plt.savefig("balmer_break_comparison_MCshaded.png")
 plt.show()
 
 total_number_density = len(balmer_breaks) / volume
