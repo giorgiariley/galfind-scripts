@@ -82,15 +82,6 @@ def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, 
                     fmt='none', ecolor=ecolor, elinewidth=0.8, alpha=ealpha, capsize=capsize
                 )
 
-    # Overlay highlighted sample
-    if highlight_mask is not None:
-        highlight_valid = valid & highlight_mask
-        plt.scatter(
-            x[highlight_valid], y[highlight_valid],
-            edgecolor='black', facecolor='gold', s=80, linewidth=1.0,
-            marker='*', label='Selected: low BB, low $\\xi_{\\rm ion}$, low $\\beta$'
-        )
-
     plt.xlabel(xlabel if xlabel else x_column_50.replace("_", " ").capitalize())
     plt.ylabel(r"$\xi_{\mathrm{ion}}^{\mathrm{CaseB}}$ (Hz erg$^{-1}$)")
     plt.title(fr"$\xi_{{\rm ion}}$ vs {xlabel if xlabel else x_column_50}")
