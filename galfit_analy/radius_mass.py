@@ -5,6 +5,19 @@ from astropy.io import fits
 from astropy.cosmology import Planck18 as cosmo
 import astropy.units as u
 import os
+import matplotlib.ticker as mticker
+
+def pretty_log_y_as_decimals(ax, tick_candidates=(0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10)):
+    ax.set_yscale('log')
+    ymin, ymax = ax.get_ylim()
+    ticks = [t for t in tick_candidates if ymin <= t <= ymax]
+    ax.yaxis.set_major_locator(mticker.FixedLocator(ticks))
+    ax.yaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda y, pos: ('{:.3f}'.format(y)).rstrip('0').rstrip('.'))
+    )
+    # keep minor ticks for grid but don’t label them
+    ax.yaxis.set_minor_locator(mticker.LogLocator(base=10, subs=np.arange(2,10)*0.1))
+    ax.yaxis.set_minor_formatter(mticker.NullFormatter())
 
 def load_fits_table(fits_path, hdu_index=1):
     """ FITS table loader"""
@@ -48,17 +61,21 @@ def compute_flux_ratio(table, filter_name):
 def scale_mass_sfr_log(table, logR):
     """Scales log10 mass column by flux ratio."""
     table['stellar_mass_50'] += logR
+    table['stellar_mass_16'] += logR
+    table['stellar_mass_84'] += logR
     return table
 
 def get_radius_kpc(table_galfit, redshifts, pixel_scale=0.03):
     """Calculates effective radius in kpc given GALFIT table and redshifts."""
     radius_pixels = table_galfit['r_e']
+    radius_err_pixels = table_galfit['r_e_u1']
     radius_arcsec = radius_pixels * pixel_scale
+    radius_err_arcsec = radius_err_pixels * pixel_scale
     DA_kpc_per_arcsec = np.array([
         (cosmo.angular_diameter_distance(z).to(u.kpc) / u.radian.to(u.arcsec)).value
         for z in redshifts
     ])
-    return radius_arcsec * DA_kpc_per_arcsec
+    return radius_arcsec * DA_kpc_per_arcsec, radius_err_arcsec * DA_kpc_per_arcsec
 
 def monte_carlo_mass_radius(
     table_galfit_matched, table_bagpipes_matched, 
@@ -105,10 +122,8 @@ def monte_carlo_mass_radius(
         
         # Convert to kpc
         z = redshifts[i]
-        r_e_samples_kpc = get_radius_kpc(
-            Table({'r_e': r_e_samples_pix}), 
-            np.full(n_samples, z)
-        )
+        r_e_samples_kpc, _ = get_radius_kpc(Table({'r_e': r_e_samples_pix}), np.full(n_samples, z))
+
 
         # **CRITICAL FIX**: Apply strict physical constraints on final radius
         # Galaxies should be between 0.05 and 15 kpc effective radius
@@ -134,18 +149,45 @@ def flag_unreliable_fits(table_galfit, radius_kpc, redshifts):
     flag_bad_chi2 = (chi2_red > 5)
     return ~(flag_bad_radius | flag_bad_n | flag_bad_chi2 | flag_bad_z)
 
-def plot_mass_vs_radius(stellar_mass, radius_kpc, is_extreme_psb, savefig=None):
+def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84, radius_kpc, radius_kpc_err, is_extreme_psb, savefig=None):
     """Scatter plot of mass vs. effective radius, highlighting extreme PSBs."""
     plt.figure(figsize=(10, 6), facecolor='white')
+
+    stellar_mass = np.array(stellar_mass)
+    stellar_mass_16 = np.array(stellar_mass_16)
+    stellar_mass_84 = np.array(stellar_mass_84)
+    #load errors
+    stellar_mass_err_lower = stellar_mass - stellar_mass_16
+    stellar_mass_err_upper = stellar_mass_84 - stellar_mass
+
+    
     # Plot others
-    plt.scatter(
-        stellar_mass[~is_extreme_psb], radius_kpc[~is_extreme_psb],
-        color='tomato', alpha=0.6, edgecolor='none', label='burstiness > 1 and Hα EW > 200 Å'
+    plt.errorbar(
+    stellar_mass[~is_extreme_psb],
+    radius_kpc[~is_extreme_psb],
+    xerr=[stellar_mass_err_lower[~is_extreme_psb], stellar_mass_err_upper[~is_extreme_psb]], yerr = radius_kpc_err[~is_extreme_psb],
+    fmt='o',
+    color='tomato',
+    alpha=0.6,
+    ecolor='tomato',
+    elinewidth=0.8,
+    capsize=2,
+    label='All other galaxies'
     )
     # Plot extreme PSBs
-    plt.scatter(
-        stellar_mass[is_extreme_psb], radius_kpc[is_extreme_psb],
-        color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
+    plt.errorbar(
+    stellar_mass[is_extreme_psb],
+    radius_kpc[is_extreme_psb],
+    xerr=[stellar_mass_err_lower[is_extreme_psb], stellar_mass_err_upper[is_extreme_psb]], yerr = radius_kpc_err[is_extreme_psb],
+    fmt='o',
+    color='royalblue',
+    alpha=0.9,
+    ecolor='royalblue',
+    elinewidth=0.8,
+    capsize=2,
+    markeredgecolor='black',
+    markeredgewidth=0.2,
+    label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 100 Å)'
     )
     # === Load the external comparison data ===
     external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
@@ -173,44 +215,6 @@ def plot_mass_vs_radius(stellar_mass, radius_kpc, is_extreme_psb, savefig=None):
         plt.savefig(savefig)
     plt.close()
 
-def plot_mass_vs_radius_by_zbin(
-    stellar_mass, radius_kpc, is_extreme_psb, redshifts,
-    bins = [3, 5, 8, 16], save_prefix="mass_vs_radius_zbin"
-):
-    """
-    Plot mass–radius in redshift bins.
-    """
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcolors
-
-    bin_indices = np.digitize(redshifts, bins)
-    for i in range(1, len(bins)):
-        mask = bin_indices == i
-        if np.sum(mask) < 1:
-            continue  # Skip empty bins
-
-        plt.figure(figsize=(9, 6), facecolor='white')
-        plt.scatter(
-            stellar_mass[mask & ~is_extreme_psb], radius_kpc[mask & ~is_extreme_psb],
-            color='tomato', alpha=0.6, label='burstiness > 1 and Hα EW > 200 Å'
-        )
-        plt.scatter(
-            stellar_mass[mask & is_extreme_psb], radius_kpc[mask & is_extreme_psb],
-            color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2,
-            label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
-        )
-        
-        plt.yscale('log')
-        plt.xlabel('Stellar Mass (log$_{10}$ M$_\odot$, scaled)')
-        plt.ylabel('Effective Radius (kpc)')
-        plt.title(f'Mass vs Radius: {bins[i-1]} < z ≤ {bins[i]}')
-        plt.axvline(8.1, color='gray', linestyle='--', label='90% completeness')
-        plt.grid(True, linestyle='--', alpha=0.5)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(f"{save_prefix}_z{bins[i-1]}_{bins[i]}.png")
-        print(f"Saving plot for {bins[i-1]} < z <= {bins[i]}, n={np.sum(mask)}")
-        plt.close()
 
 def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None, mass_cut_applied=False):
     """Scatter plot of redshift vs. effective radius, highlighting extreme PSBs."""
@@ -218,12 +222,12 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None,
     # Plot others
     plt.scatter(
         redshifts[~is_extreme_psb], radius_kpc[~is_extreme_psb],
-        color='tomato', alpha=0.6, edgecolor='none', label='burstiness > 1 and Hα EW > 200 Å'
+        color='tomato', alpha=0.6, edgecolor='none', label='All other galaxies'
     )
     # Plot extreme PSBs
     plt.scatter(
         redshifts[is_extreme_psb], radius_kpc[is_extreme_psb],
-        color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 200 Å)'
+        color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 100 Å)'
     )
     # External comparison data, as before...
     external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
@@ -251,153 +255,209 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb, savefig=None,
         plt.savefig(savefig)
     plt.close()
 
-def plot_binned_mass_vs_radius(stellar_mass, radius_kpc, is_extreme_psb, nbins=16, savefig=None):
+def plot_binned_mass_vs_radius(
+    stellar_mass, stellar_mass_16, stellar_mass_84,
+    radius_kpc, is_extreme_psb, nbins=16, savefig=None, min_per_bin=3
+):
     """
-    Plots median effective radius vs. stellar mass in mass bins,
-    for non-extreme PSBs, extreme PSBs, and Westcott comparison sample.
+    Same binning as before; just styles error bars to be fainter.
     """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import colors as mcolors
+
+    soft = lambda c, a: mcolors.to_rgba(c, a)  # same color, custom alpha
+    c_other, c_psb, c_west = 'tomato', 'royalblue', 'slategrey'
+
+    sm   = np.asarray(stellar_mass)
+    sm16 = np.asarray(stellar_mass_16)
+    sm84 = np.asarray(stellar_mass_84)
+    rk   = np.asarray(radius_kpc)
+    good = np.isfinite(sm) & np.isfinite(sm16) & np.isfinite(sm84) & np.isfinite(rk)
+    sm, sm16, sm84, rk, is_extreme_psb = sm[good], sm16[good], sm84[good], rk[good], is_extreme_psb[good]
+
+    bins = np.linspace(np.nanmin(sm), np.nanmax(sm), nbins + 1)
+
+    def bin_stats(mask):
+        x_med, xerr_lo, xerr_hi = [], [], []
+        y_med, y_lo, y_hi = [], [], []
+        for i in range(nbins):
+            m = (sm >= bins[i]) & (sm < bins[i+1]) & mask
+            if np.sum(m) >= min_per_bin:
+                m50 = sm[m]
+                x_med.append(np.nanmedian(m50))
+                xerr_lo.append(np.nanmedian(np.maximum(0.0, m50 - sm16[m])))
+                xerr_hi.append(np.nanmedian(np.maximum(0.0, sm84[m] - m50)))
+
+                vals = rk[m]
+                y50 = np.nanmedian(vals)
+                y16 = np.nanpercentile(vals, 16)
+                y84 = np.nanpercentile(vals, 84)
+                y_med.append(y50)
+                y_lo.append(y50 - y16)
+                y_hi.append(y84 - y50)
+            else:
+                x_med.append(np.nan); xerr_lo.append(np.nan); xerr_hi.append(np.nan)
+                y_med.append(np.nan); y_lo.append(np.nan);  y_hi.append(np.nan)
+
+        x_med = np.array(x_med); y_med = np.array(y_med)
+        xerr  = np.vstack([np.array(xerr_lo), np.array(xerr_hi)])
+        yerr  = np.vstack([np.array(y_lo),  np.array(y_hi)])
+        finite = np.isfinite(x_med) & np.isfinite(y_med)
+        return x_med[finite], xerr[:, finite], y_med[finite], yerr[:, finite]
+
     plt.figure(figsize=(9,6))
-    bins = np.linspace(np.nanmin(stellar_mass), np.nanmax(stellar_mass), nbins + 1)
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
 
-    # -- Other galaxies (not extreme PSBs)
-    medians_other, lower_other, upper_other = [], [], []
-    for i in range(nbins):
-        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & (~is_extreme_psb)
-        vals = radius_kpc[mask]
-        if np.sum(mask) > 0:
-            medians_other.append(np.nanmedian(vals))
-            lower_other.append(np.nanpercentile(vals, 16))
-            upper_other.append(np.nanpercentile(vals, 84))
-        else:
-            medians_other.append(np.nan)
-            lower_other.append(np.nan)
-            upper_other.append(np.nan)
-    plt.errorbar(bin_centers, medians_other, yerr=[np.array(medians_other)-np.array(lower_other), np.array(upper_other)-np.array(medians_other)],
-                 fmt='o-', color='tomato', alpha=0.7, label='Other galaxies')
+    # other galaxies
+    x_o, xerr_o, y_o, yerr_o = bin_stats(~is_extreme_psb)
+    if x_o.size:
+        plt.errorbar(
+            x_o, y_o, xerr=xerr_o, yerr=yerr_o,
+            fmt='o-', color=c_other, lw=1.6, ms=5,
+            ecolor=soft(c_other, 0.35), elinewidth=1.0, capsize=2, capthick=1,
+            label='Other galaxies', zorder=3
+        )
 
-    # -- Extreme PSBs
-    medians_psb, lower_psb, upper_psb = [], [], []
-    for i in range(nbins):
-        mask = (stellar_mass >= bins[i]) & (stellar_mass < bins[i+1]) & is_extreme_psb
-        vals = radius_kpc[mask]
-        if np.sum(mask) > 0:
-            medians_psb.append(np.nanmedian(vals))
-            lower_psb.append(np.nanpercentile(vals, 16))
-            upper_psb.append(np.nanpercentile(vals, 84))
-        else:
-            medians_psb.append(np.nan)
-            lower_psb.append(np.nan)
-            upper_psb.append(np.nan)
-    plt.errorbar(bin_centers, medians_psb, yerr=[np.array(medians_psb)-np.array(lower_psb), np.array(upper_psb)-np.array(medians_psb)],
-                 fmt='o-', color='royalblue', alpha=0.7, label='Extreme PSBs')
+    # extreme PSBs
+    x_p, xerr_p, y_p, yerr_p = bin_stats(is_extreme_psb)
+    if x_p.size:
+        plt.errorbar(
+            x_p, y_p, xerr=xerr_p, yerr=yerr_p,
+            fmt='o-', color=c_psb, lw=1.6, ms=5,
+            ecolor=soft(c_psb, 0.35), elinewidth=1.0, capsize=2, capthick=1,
+            label='Extreme PSBs', zorder=4
+        )
 
-    # --- Binned Westcott Data ---
-    # Load Westcott data
-    external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
-    external_table = load_fits_table(external_fits, hdu_index=1)
-    external_mass = external_table['stellar_mass_50']
-    external_radius_kpc = external_table['re_kpc']
-    # Use same bins for fair comparison
-    medians_west, lower_west, upper_west = [], [], []
+    # Westcott comparison (no x-errors)
+    ext = load_fits_table("/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits", hdu_index=1)
+    em = np.asarray(ext['stellar_mass_50']); er = np.asarray(ext['re_kpc'])
+    ok = np.isfinite(em) & np.isfinite(er); em, er = em[ok], er[ok]
+    x_w, y_w, yerr_w = [], [], []
     for i in range(nbins):
-        mask = (external_mass >= bins[i]) & (external_mass < bins[i+1])
-        vals = external_radius_kpc[mask]
-        if np.sum(mask) >= 5:
-            medians_west.append(np.nanmedian(vals))
-            lower_west.append(np.nanpercentile(vals, 16))
-            upper_west.append(np.nanpercentile(vals, 84))
-        else:
-            medians_west.append(np.nan)
-            lower_west.append(np.nan)
-            upper_west.append(np.nan)
-    plt.errorbar(bin_centers, medians_west, yerr=[np.array(medians_west)-np.array(lower_west), np.array(upper_west)-np.array(medians_west)],
-                 fmt='o-', color='slategrey', alpha=1, markerfacecolor='none', label='Westcott:EPOCHS-XI')
+        m = (em >= bins[i]) & (em < bins[i+1])
+        if np.sum(m) >= 5:
+            xm = np.nanmedian(em[m])
+            vals = er[m]
+            y50 = np.nanmedian(vals); y16 = np.nanpercentile(vals, 16); y84 = np.nanpercentile(vals, 84)
+            x_w.append(xm); y_w.append(y50); yerr_w.append([y50 - y16, y84 - y50])
+    if x_w:
+        yerr_w = np.array(yerr_w).T
+        plt.errorbar(
+            np.array(x_w), np.array(y_w), yerr=yerr_w,
+            fmt='o-', color=c_west, lw=1.6, ms=4, mfc='white',
+            ecolor=soft(c_west, 0.35), elinewidth=1.0, capsize=2, capthick=1,
+            label='Westcott:EPOCHS-XI', zorder=2
+        )
 
     plt.yscale('log')
-    plt.xlabel('Stellar Mass (log$_{10}$ M$_\odot$, scaled)')
+    plt.xlabel('Stellar Mass (log$_{10}$ M$_\\odot$, scaled)')
     plt.ylabel('Median Effective Radius (kpc)')
     plt.title('Binned: Stellar Mass vs Effective Radius')
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.axvline(8.1, color='gray', linestyle='--', label='90% completeness')
-    plt.legend()
+    plt.axvline(8.1, color='gray', linestyle='--', lw=1.2, label='90% completeness')
+    plt.grid(True, linestyle='--', alpha=0.4)
+    plt.legend(framealpha=0.9)
+    ax = plt.gca()
+# (optional) enforce your usual limits:
+# ax.set_ylim(0.05, 15)
+    pretty_log_y_as_decimals(ax)
     plt.tight_layout()
     if savefig:
-        plt.savefig(savefig)
+        plt.savefig(savefig, dpi=300)
     plt.show()
     plt.close()
 
 
-def plot_binned_redshift_vs_radius(redshifts, radius_kpc, is_extreme_psb, nbins=12, savefig=None, mass_cut_applied=False):
+
+def plot_binned_redshift_vs_radius(
+    redshifts, radius_kpc, is_extreme_psb,
+    nbins=12, savefig=None, mass_cut_applied=False, min_per_bin=3,
+    err_alpha=0.7
+):
     """
-    Plots median effective radius vs. redshift in bins, for 'other galaxies', extreme PSBs, and Westcott.
+    Median R_eff vs redshift (binned). y-err = [median-16th, 84th-median].
+    No x-err. Error bars drawn faintly; markers/lines solid.
     """
-    plt.figure(figsize=(9,6))
-    bins = np.linspace(np.nanmin(redshifts), np.nanmax(redshifts), nbins + 1)
-    bin_centers = 0.5 * (bins[:-1] + bins[1:])
+    # clean inputs
+    z = np.asarray(redshifts)
+    r = np.asarray(radius_kpc)
+    psb = np.asarray(is_extreme_psb, dtype=bool)
+    good = np.isfinite(z) & np.isfinite(r)
+    z, r, psb = z[good], r[good], psb[good]
 
-    # -- Other galaxies (not extreme PSBs)
-    medians_other, lower_other, upper_other = [], [], []
-    for i in range(nbins):
-        mask = (redshifts >= bins[i]) & (redshifts < bins[i+1]) & (~is_extreme_psb)
-        vals = radius_kpc[mask]
-        if np.sum(mask) > 0:
-            medians_other.append(np.nanmedian(vals))
-            lower_other.append(np.nanpercentile(vals, 16))
-            upper_other.append(np.nanpercentile(vals, 84))
-        else:
-            medians_other.append(np.nan)
-            lower_other.append(np.nan)
-            upper_other.append(np.nan)
-    plt.errorbar(bin_centers, medians_other, yerr=[np.array(medians_other)-np.array(lower_other), np.array(upper_other)-np.array(medians_other)],
-                 fmt='o-', color='tomato', alpha=0.7, label='Other galaxies')
+    bins = np.linspace(np.nanmin(z), np.nanmax(z), nbins + 1)
+    xcent = 0.5 * (bins[:-1] + bins[1:])
 
-    # -- Extreme PSBs
-    medians_psb, lower_psb, upper_psb = [], [], []
-    for i in range(nbins):
-        mask = (redshifts >= bins[i]) & (redshifts < bins[i+1]) & is_extreme_psb
-        vals = radius_kpc[mask]
-        if np.sum(mask) > 0:
-            medians_psb.append(np.nanmedian(vals))
-            lower_psb.append(np.nanpercentile(vals, 16))
-            upper_psb.append(np.nanpercentile(vals, 84))
-        else:
-            medians_psb.append(np.nan)
-            lower_psb.append(np.nan)
-            upper_psb.append(np.nan)
-    plt.errorbar(bin_centers, medians_psb, yerr=[np.array(medians_psb)-np.array(lower_psb), np.array(upper_psb)-np.array(medians_psb)],
-                 fmt='o-', color='royalblue', alpha=0.7, label='Extreme PSBs')
+    def y_stats(sel):
+        y50, ylo, yhi = [], [], []
+        for i in range(nbins):
+            m = (z >= bins[i]) & (z < bins[i+1]) & sel
+            if np.sum(m) >= min_per_bin:
+                vals = r[m]
+                med = np.nanmedian(vals)
+                p16 = np.nanpercentile(vals, 16)
+                p84 = np.nanpercentile(vals, 84)
+                y50.append(med)
+                ylo.append(med - p16)
+                yhi.append(p84 - med)
+            else:
+                y50.append(np.nan); ylo.append(np.nan); yhi.append(np.nan)
+        y50 = np.array(y50)
+        yerr = np.vstack([np.array(ylo), np.array(yhi)])
+        keep = np.isfinite(y50)
+        return xcent[keep], y50[keep], yerr[:, keep]
 
-    # --- Binned Westcott Data ---
+    fig, ax = plt.subplots(figsize=(9,6))
+
+    # Other galaxies
+    xo, yo, yerr_o = y_stats(~psb)
+    if xo.size:
+        ax.plot(xo, yo, 'o-', color='tomato', alpha=0.9, label='Other galaxies', zorder=3)
+        ax.errorbar(xo, yo, yerr=yerr_o, fmt='none', ecolor='tomato',
+                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
+
+    # Extreme PSBs
+    xp, yp, yerr_p = y_stats(psb)
+    if xp.size:
+        ax.plot(xp, yp, 'o-', color='royalblue', alpha=0.95,
+                markeredgecolor='white', markeredgewidth=0.8,
+                label='Extreme PSBs', zorder=4)
+        ax.errorbar(xp, yp, yerr=yerr_p, fmt='none', ecolor='royalblue',
+                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
+
+    # Westcott comparison, binned on the same z bins (no x-err)
     external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
-    external_table = load_fits_table(external_fits, hdu_index=1)
-    external_redshift = external_table['zbest_fsps_larson']
-    external_radius_kpc = external_table['re_kpc']
-    # Use same bins for fair comparison
-    medians_west, lower_west, upper_west = [], [], []
-    for i in range(nbins):
-        mask = (external_redshift >= bins[i]) & (external_redshift < bins[i+1])
-        vals = external_radius_kpc[mask]
-        if np.sum(mask) >= 5:
-            medians_west.append(np.nanmedian(vals))
-            lower_west.append(np.nanpercentile(vals, 16))
-            upper_west.append(np.nanpercentile(vals, 84))
-        else:
-            medians_west.append(np.nan)
-            lower_west.append(np.nan)
-            upper_west.append(np.nan)
-    plt.errorbar(bin_centers, medians_west, yerr=[np.array(medians_west)-np.array(lower_west), np.array(upper_west)-np.array(medians_west)],
-                 fmt='o-', color='slategrey', alpha=1, markerfacecolor='none', label='Westcott:EPOCHS-XI')
+    ext = load_fits_table(external_fits, hdu_index=1)
+    zext = np.asarray(ext['zbest_fsps_larson'])
+    rext = np.asarray(ext['re_kpc'])
+    ok = np.isfinite(zext) & np.isfinite(rext)
+    zext, rext = zext[ok], rext[ok]
 
-    plt.yscale('log')
-    plt.xlabel('Redshift')
-    plt.ylabel('Median Effective Radius (kpc)')
-    if mass_cut_applied:
-        plt.title('Binned: Redshift vs Effective Radius (log M$_* > 8.1$ cut)')
-    else:
-        plt.title('Binned: Redshift vs Effective Radius (no mass cut)')
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.legend()
+    xw, yw, yerr_w = [], [], []
+    for i in range(nbins):
+        m = (zext >= bins[i]) & (zext < bins[i+1])
+        if np.sum(m) >= 5:
+            med = np.nanmedian(rext[m])
+            p16 = np.nanpercentile(rext[m], 16)
+            p84 = np.nanpercentile(rext[m], 84)
+            xw.append(xcent[i]); yw.append(med); yerr_w.append([med-p16, p84-med])
+    if xw:
+        xw = np.array(xw); yw = np.array(yw); yerr_w = np.array(yerr_w).T
+        ax.plot(xw, yw, 'o-', color='slategrey', markerfacecolor='none',
+                label='Westcott:EPOCHS-XI', zorder=3)
+        ax.errorbar(xw, yw, yerr=yerr_w, fmt='none', ecolor='slategrey',
+                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
+
+    # Axes, styling
+    ax.set_yscale('log')
+    ax.set_xlabel('Redshift')
+    ax.set_ylabel('Median Effective Radius (kpc)')
+    ax.set_title('Binned: Redshift vs Effective Radius' + (' (log M$_* > 8.1$ cut)' if mass_cut_applied else ''))
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend()
+
+    # decimal tick labels on log y
+    pretty_log_y_as_decimals(ax)
+
     plt.tight_layout()
     if savefig:
         plt.savefig(savefig)
@@ -573,62 +633,98 @@ def main(
     filter_name='F444W', phot_idcol='NUMBER', bagpipes_idcol='#ID',     
     pdf_dir = "/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/pipes/pdfs/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/temp/stellar_mass"
 ):
-    # Load tables (existing code)
+    # Load tables
     table_objects = load_fits_table(phot_fits, hdu_index=1)
     with fits.open(bagpipes_fits) as hdulist:
         table_bagpipes = Table(hdulist[4].data)
     table_galfit = load_fits_table(galfit_fits, hdu_index=1)
 
-    # Match tables (existing code)
+    # Match tables
     table_objects_matched, table_bagpipes_matched, table_galfit_matched = match_three_tables_by_id(
         table_objects, table_bagpipes, table_galfit,
         phot_idcol, bagpipes_idcol, 'id'
     )
 
-    # Scale mass and SFR (existing code)
+    # Scale mass by flux ratio
     R = compute_flux_ratio(table_objects_matched, filter_name)
     logR = np.log10(R)
     scale_mass_sfr_log(table_bagpipes_matched, logR)
 
-    # Extract redshifts and compute radius
+    # Get redshifts and radii
     redshifts = table_bagpipes_matched['input_redshift']
-    radius_kpc = get_radius_kpc(table_galfit_matched, redshifts)
+    radius_kpc, radius_kpc_err = get_radius_kpc(table_galfit_matched, redshifts)
 
-    # **CRITICAL FIX**: Apply reliability mask AND physical constraints
+    # Reliability and physical constraints
     reliable_mask = flag_unreliable_fits(table_galfit_matched, radius_kpc, redshifts)
-    
-    # Additional physical constraints
     physical_mask = (radius_kpc > 0.05) & (radius_kpc < 15.0) & np.isfinite(radius_kpc)
-    
-    # Combine masks
-    final_mask = reliable_mask & physical_mask
-    
-    print(f"Reliable fits: {np.sum(reliable_mask)} out of {len(reliable_mask)}")
-    print(f"Physical constraints: {np.sum(physical_mask)} out of {len(physical_mask)}")
-    print(f"Final sample: {np.sum(final_mask)} galaxies")
+    good_err_mask = (radius_kpc_err / radius_kpc) < 0.5
 
-    # Apply final mask
+    final_mask = reliable_mask & physical_mask & good_err_mask
+
+    # Apply mask
     radius_kpc_clean = radius_kpc[final_mask]
     stellar_mass_scaled = table_bagpipes_matched['stellar_mass_50'][final_mask]
     burstiness_clean = table_bagpipes_matched['burstiness_50'][final_mask]
     halpha_clean = table_bagpipes_matched['Halpha_EW_rest_50'][final_mask]
     redshifts_clean = redshifts[final_mask]
+    stellar_mass_scaled_16 = table_bagpipes_matched['stellar_mass_16'][final_mask]
+    stellar_mass_scaled_84 = table_bagpipes_matched['stellar_mass_84'][final_mask]
+    radius_kpc_err = radius_kpc_err[final_mask]
 
     # Extreme PSB mask
     is_extreme_psb = (burstiness_clean <= 1) & (halpha_clean <= 100)
+    print("median r_e, median r_e_u1:",
+      np.nanmedian(table_galfit['r_e']),
+      np.nanmedian(table_galfit['r_e_u1']))
     
-    # **ONLY SAMPLE FROM CLEAN, RELIABLE GALAXIES**
-    mass_samples, radius_samples = monte_carlo_mass_radius(
-        table_galfit_matched[final_mask], table_bagpipes_matched[final_mask],
-        pdf_dir, id_column='id', n_samples=500
+    # sanity check one object (replace z0, r_pix0, e_pix0 with medians)
+    z0 = np.nanmedian(redshifts)
+    kpc_per_arcsec = (cosmo.angular_diameter_distance(z0).to(u.kpc).value) / u.radian.to(u.arcsec)
+    pixscale = 0.03  # verify this!
+    r_pix0   = 3.49
+    e_pix0   = 0.1765
+
+    r_kpc0   = r_pix0 * pixscale * kpc_per_arcsec
+    e_kpc0   = e_pix0 * pixscale * kpc_per_arcsec
+    print(r_kpc0, e_kpc0)   # should look reasonable (e.g., error ~ few % of value)
+
+
+    # Monte Carlo sampling
+    # mass_samples, radius_samples = monte_carlo_mass_radius(
+    #     table_galfit_matched[final_mask], table_bagpipes_matched[final_mask],
+    #     pdf_dir, id_column='id', n_samples=500
+    # )
+
+    # ---- PLOTS ----
+    plot_mass_vs_radius(
+        stellar_mass_scaled,stellar_mass_scaled_16, stellar_mass_scaled_84, radius_kpc_clean, radius_kpc_err, is_extreme_psb,
+        savefig="mass_vs_radius.png"
     )
 
-    # Create improved plot
-    plot_mass_vs_radius_with_hexbin(
-        mass_samples, radius_samples,
-        stellar_mass_scaled, radius_kpc_clean, is_extreme_psb,
-        nbins=16, savefig='mass_vs_radius_hexbin_fixed.png'
+    # Apply mass cut for redshift–radius plots
+    mass_cut_mask = stellar_mass_scaled > 8.1
+    plot_radius_vs_redshift(
+        redshifts_clean[mass_cut_mask], radius_kpc_clean[mass_cut_mask],
+        is_extreme_psb[mass_cut_mask],
+        savefig="radius_vs_redshift_masscut.png",
+        mass_cut_applied=True
     )
+
+    plot_binned_mass_vs_radius(
+    stellar_mass_scaled, stellar_mass_scaled_16, stellar_mass_scaled_84,
+    radius_kpc_clean, is_extreme_psb,
+    nbins=16, savefig="binned_mass_vs_radius.png"
+    )
+
+
+    plot_binned_redshift_vs_radius(
+        redshifts_clean[mass_cut_mask], radius_kpc_clean[mass_cut_mask],
+        is_extreme_psb[mass_cut_mask],
+        savefig="binned_redshift_vs_radius_masscut.png",
+        mass_cut_applied=True
+    )
+
+
 
 if __name__ == "__main__":
     main(
