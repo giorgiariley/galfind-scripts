@@ -59,7 +59,7 @@ def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, 
         np.isfinite(halpha_EW)
     )
 
-    colours = np.where(((burstiness[valid] <= 1) & (halpha_EW[valid] <= 100)), 'crimson', 'teal')
+    colours = np.where(((burstiness[valid] <= 1) & (halpha_EW[valid] <= 100)), 'tomato', 'royalblue')
 
     plt.figure(figsize=(8, 6), facecolor='white')
 
@@ -69,11 +69,11 @@ def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, 
     # Error bars - draw per colour group so ecolor matches
     if (xerr is not None) or (yerr is not None):
         mask_crimson = valid.copy()
-        mask_crimson[valid] = colours == 'crimson'
+        mask_crimson[valid] = colours == 'tomato'
         mask_teal = valid.copy()
-        mask_teal[valid] = colours == 'teal'
+        mask_teal[valid] = colours == 'royalblue'
 
-        for m, ecolor in [(mask_crimson, 'crimson'), (mask_teal, 'teal')]:
+        for m, ecolor in [(mask_crimson, 'tomato'), (mask_teal, 'royalblue')]:
             if np.any(m):
                 plt.errorbar(
                     x[m], y[m],
@@ -93,10 +93,10 @@ def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, 
         plt.ylim(ylim)
 
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Burstiness <= 1 & Halpha EW < 100Å ',
-               markerfacecolor='crimson', markersize=8),
-        Line2D([0], [0], marker='o', color='w', label='Burstiness > 1 & Halpha EW > 100Å',
-               markerfacecolor='teal', markersize=8)
+        Line2D([0], [0], marker='o', color='w', label='Extreme PSBs: Burstiness <= 1 & Halpha EW < 100Å ',
+               markerfacecolor='tomato', markersize=8),
+        Line2D([0], [0], marker='o', color='w', label='Other',
+               markerfacecolor='royalblue', markersize=8)
     ]
     plt.legend(handles=legend_elements + (
         [Line2D([0], [0], marker='*', color='w', label='Selected extremes',
