@@ -20,6 +20,7 @@ hdulist.close()
 IDs = table_pipes['#ID']
 burstiness = table_pipes['burstiness_50']
 UV = table_pipes['UV_colour_50']
+halpha = table_pipes['Halpha_EW_rest_50']
 
 # === Parameters ===
 sample = Austin25_sample
@@ -77,7 +78,7 @@ hdulist.close()
 #want to pick IDs where brustiness <1 and UV < 0.3
 
 ## Convert Bagpipes table into filter mask
-mask = (burstiness < 1) & (UV < 0.3)
+mask = (burstiness <= 1) & (halpha <= 100)
 selected_ids = table_pipes['#ID'][mask]
 
 # Match IDs with catalogue (optional: intersect)
@@ -87,13 +88,13 @@ mask_in_cat = np.isin(cat_IDs, selected_ids)
 filtered_ids = cat_IDs[mask_in_cat]
 
 # Now safe to use in ID_Selector
-id_selector = ID_Selector(filtered_ids, "selected_burstiness_UV<0.3")
+id_selector = ID_Selector(filtered_ids, "selected_burstiness_halpha")
 cat_selected = id_selector(cat)
 
 print(f"Number of selected IDs: {len(filtered_ids)}")
 print(f"First 5 selected IDs: {filtered_ids[:5]}")
 # Step 3: Create cutouts and plot
 cutouts_selected = Catalogue_Cutouts.from_cat_filt(cat_selected, "F444W", 0.96 * u.arcsec, overwrite=False)
-cutouts_selected.plot()#(save_path="burstinessUV_selected_cutouts.png")
+cutouts_selected.plot()#(save_path="burstinesshalpha_selected_cutouts.png")
 
 
