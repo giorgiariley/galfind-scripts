@@ -33,12 +33,12 @@ def make_ca_plot(conc, log_asym, title='Concentration–Asymmetry Diagram',
     # Plot non-PSBs first (background)
     non_psb = ~colour
     plt.scatter(conc[non_psb], log_asym[non_psb],
-                color='tomato', alpha=0.7, s=20,
-                edgecolor='none', label='Burstiness >1, Halpha EW >100Å')
+                color='royalblue', alpha=0.7, s=20,
+                edgecolor='none', label='Other')
 
     # Plot PSBs on top
     plt.scatter(conc[colour], log_asym[colour],
-                color='royalblue', alpha=0.8, s=20,
+                color='tomato', alpha=0.8, s=20,
                 edgecolor='none', label='Burstiness<=1, Halpha EW<=100Å')
 
     if add_bershady:
