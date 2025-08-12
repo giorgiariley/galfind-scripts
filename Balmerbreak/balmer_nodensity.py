@@ -309,18 +309,18 @@ plt.figure(figsize=(8, 6), facecolor='white')
 nonzero_mask1 = counts_low > 0
 nonzero_mask2 = counts_high > 0
 plt.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1],
-             yerr=errors_low[nonzero_mask1], fmt='o', color='blue', capsize=3, zorder=3)
+             yerr=errors_low[nonzero_mask1], fmt='o', color='tomato', capsize=3, zorder=3)
 plt.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2],
-             yerr=errors_high[nonzero_mask2], fmt='o', color='red', capsize=3, zorder=3)
+             yerr=errors_high[nonzero_mask2], fmt='o', color='royalblue', capsize=3, zorder=3)
 
 # Shaded MC ranges
-plt.fill_between(x_vals, pdf_low_p16,  pdf_low_p84,  color='blue', alpha=0.2)
-plt.fill_between(x_vals, pdf_high_p16, pdf_high_p84, color='red', alpha=0.15)
+plt.fill_between(x_vals, pdf_low_p16,  pdf_low_p84,  color='tomato', alpha=0.2)
+plt.fill_between(x_vals, pdf_high_p16, pdf_high_p84, color='royalblue', alpha=0.15)
 
 # Median curves
-plt.plot(x_vals, pdf_low_median,  'b--',
+plt.plot(x_vals, pdf_low_median,  'r--',
          label=f'Burstiness <= 1, Hα <= 100: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
-plt.plot(x_vals, pdf_high_median, 'r--', label='Other: exGaussian (bootstrap median)')
+plt.plot(x_vals, pdf_high_median, 'b--', label='Other: exGaussian (bootstrap median)')
 
 
 # Labels & limits
