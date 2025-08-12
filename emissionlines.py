@@ -52,23 +52,23 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
 
     plt.figure(figsize=(8,6), facecolor='white')
     # red points and errors
-    plt.scatter(x[other], y[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    plt.scatter(x[other], y[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             x[other], y[other],
             xerr=xerr[:, other] if xerr is not None else None,
             yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     # blue points and errors on top
-    plt.scatter(x[special], y[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(x[special], y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             x[special], y[special],
             xerr=xerr[:, special] if xerr is not None else None,
             yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     plt.xlabel("UV Colour (mag)")
@@ -116,23 +116,23 @@ def plot_Halpha_vs_OIII(table, output_path):
 
     plt.figure(figsize=(8,6), facecolor='white')
     # red points and errors
-    plt.scatter(O3[other], Ha[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    plt.scatter(O3[other], Ha[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             O3[other], Ha[other],
             xerr=xerr[:, other] if xerr is not None else None,
             yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     # blue points and errors on top
-    plt.scatter(O3[special], Ha[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(O3[special], Ha[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             O3[special], Ha[special],
             xerr=xerr[:, special] if xerr is not None else None,
             yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     plt.xlabel("[OIII] 5007 EW (rest-frame Å)")
@@ -185,23 +185,23 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
     print(len(X[special]), len(Y[special]), len(X[other]), len(Y[other]))
     plt.figure(figsize=(8,6), facecolor='white')
     # red points and errors
-    plt.scatter(X[other], Y[other], color='tomato', alpha=0.5, edgecolor='none', label='All other galaxies')
+    plt.scatter(X[other], Y[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             X[other], Y[other],
             xerr=xerr[:, other] if xerr is not None else None,
             yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     # blue points and errors on top
-    plt.scatter(X[special], Y[special], color='steelblue', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(X[special], Y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             X[special], Y[special],
             xerr=xerr[:, special] if xerr is not None else None,
             yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='steelblue', elinewidth=0.8, capsize=2, alpha=0.25
+            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
         )
 
     plt.xlabel("[OIII] + Hβ EW (rest-frame Å)")
