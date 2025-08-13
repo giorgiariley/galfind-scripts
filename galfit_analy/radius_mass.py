@@ -8,6 +8,12 @@ import os
 import matplotlib.ticker as mticker
 from scipy.stats import ks_2samp
 
+plt.rcParams.update({
+    "axes.labelsize": 15,   # axis label font
+    "xtick.labelsize": 13,  # tick label font
+    "ytick.labelsize": 13,
+    "legend.fontsize": 13,
+})
 
 def ks_size_by_mass_bin(stellar_mass, radius_kpc, is_extreme_psb,
                         bins=None, nbins=16, min_per_group=5,
@@ -116,7 +122,6 @@ def ks_size_by_mass_bin(stellar_mass, radius_kpc, is_extreme_psb,
         plt.close()
 
     return results
-
 
 def pretty_log_y_as_decimals(ax, tick_candidates=(0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10)):
     ax.set_yscale('log')
@@ -248,7 +253,6 @@ def monte_carlo_mass_radius(
 
     return np.array(all_mass), np.array(all_radius)
 
-
 def flag_unreliable_fits(table_galfit, radius_kpc, redshifts):
     """Returns a boolean mask of reliable fits."""
     sersic_index = table_galfit['n']
@@ -286,17 +290,17 @@ def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84,
     ax.scatter(stellar_mass[m_psb], radius_kpc[m_psb],
                s=22, color='royalblue', alpha=0.9, edgecolor='black',
                linewidth=0.2,
-               label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 100 Å)')
+               label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)')
 
     # axes & styling
     ax.set_yscale('log')
     ax.set_xlabel('Stellar Mass (log$_{10}$ M$_\\odot$, scaled)')
     ax.set_ylabel('Effective Radius (kpc)')
-    ax.set_title('Stellar Mass vs Effective Radius')
     ax.axvline(8.1, color='gray', linestyle='--', label='90% completeness')
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.set_xlim(6, 11)  # set limits before placing the example bars
     pretty_log_y_as_decimals(ax)
+
 
     # helper: place one typical error bar; returns its (x0, y0) in data coords
     def _add_typical_err(ax, mask, color, x_frac=0.035, y_frac=0.16):
@@ -333,7 +337,7 @@ def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84,
     if x_lab is not None:
         xmin, xmax = ax.get_xlim()
         ax.text(x_lab -0.023*(xmax - xmin), y_lab+0.05,
-                'Typical error bars', fontsize=10, va='bottom', ha='left',
+                'Typical error bars', fontsize=13, va='bottom', ha='left',
                 bbox=dict(boxstyle='round,pad=0.25', fc='white', ec='none', alpha=0.75))
 
     # external comparison
@@ -344,11 +348,12 @@ def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84,
                label='Westcott:EPOCHS-XI')
 
     ax.legend()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 10**0.2)  # ~25% higher in log space
     plt.tight_layout()
     if savefig:
         plt.savefig(savefig)
     plt.close()
-
 
 
 def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
@@ -364,7 +369,7 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
 
     ax.scatter(z[~m], r[~m], color='tomato',    alpha=0.6, edgecolor='none', s=18, label='All other galaxies')
     ax.scatter(z[m],  r[m],  color='royalblue', alpha=0.9, edgecolor='black', linewidth=0.2, s=22,
-               label='Extreme PSBs (burstiness ≤ 1 & Hα EW ≤ 100 Å)')
+               label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)')
 
     # Westcott comparison
     ext = load_fits_table("/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits", hdu_index=1)
@@ -374,8 +379,6 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
     ax.set_yscale('log')
     ax.set_xlabel('Redshift')
     ax.set_ylabel('Effective Radius (kpc)')
-    ax.set_title('Redshift vs Effective Radius (log M$_* > 8.1$ cut applied)' if mass_cut_applied
-                 else 'Redshift vs Effective Radius (no mass cut)')
     ax.grid(True, linestyle='--', alpha=0.5)
     pretty_log_y_as_decimals(ax)
 
@@ -409,10 +412,12 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
         x_label = xmin + 0.02*(xmax - xmin)             # a bit left of the bars
         y_label = min(ymax/1.02, y_bar + 1.4*ey_bar)     # just above the bar top
         ax.text(x_label, y_label, "Typical error bars",
-                fontsize=10, va='bottom', ha='left',
+                fontsize=13, va='bottom', ha='left',
                 bbox=dict(boxstyle='round,pad=0.25', fc='white', ec='none', alpha=0.75))
 
     ax.legend()
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 10**0.1)  # ~25% higher in log space
     plt.tight_layout()
     if savefig:
         plt.savefig(savefig)
@@ -489,7 +494,7 @@ def plot_binned_mass_vs_radius(
             x_p, y_p, xerr=xerr_p, yerr=yerr_p,
             fmt='o-', color=c_psb, lw=1.6, ms=5,
             ecolor=soft(c_psb, 0.35), elinewidth=1.0, capsize=2, capthick=1,
-            label='Extreme PSBs', zorder=4
+            label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)', zorder=4
         )
 
     # Westcott comparison (no x-errors)
@@ -516,7 +521,6 @@ def plot_binned_mass_vs_radius(
     plt.yscale('log')
     plt.xlabel('Stellar Mass (log$_{10}$ M$_\\odot$, scaled)')
     plt.ylabel('Median Effective Radius (kpc)')
-    plt.title('Binned: Stellar Mass vs Effective Radius')
     plt.axvline(8.1, color='gray', linestyle='--', lw=1.2, label='90% completeness')
     plt.grid(True, linestyle='--', alpha=0.4)
     plt.legend(framealpha=0.9)
@@ -582,7 +586,7 @@ def plot_binned_redshift_vs_radius(
     if xp.size:
         ax.plot(xp, yp, 'o-', color='tomato', alpha=0.95,
                 markeredgecolor='white', markeredgewidth=0.8,
-                label='Extreme PSBs', zorder=4)
+                label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)', zorder=4)
         ax.errorbar(xp, yp, yerr=yerr_p, fmt='none', ecolor='tomato',
                     elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
 
@@ -613,7 +617,6 @@ def plot_binned_redshift_vs_radius(
     ax.set_yscale('log')
     ax.set_xlabel('Redshift')
     ax.set_ylabel('Median Effective Radius (kpc)')
-    ax.set_title('Binned: Redshift vs Effective Radius' + (' (log M$_* > 8.1$ cut)' if mass_cut_applied else ''))
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.legend()
 
@@ -626,30 +629,49 @@ def plot_binned_redshift_vs_radius(
     plt.show()
     plt.close()
 
-import numpy as np
-import matplotlib.pyplot as plt
-
-def plot_size_vs_param_in_mass_bins(logM, Re_kpc, param, param_label,
-                                    mass_bins=(8.1, 8.6, 9.0, 9.5, 10.0),
-                                    nbins_param=5, min_per_bin=15, savefig=None,
-                                    logy=True):
+def plot_size_vs_param_in_mass_bins(
+    logM, Re_kpc, param, param_label,
+    mass_bins = (8.1, 8.6, 9.0, 9.5,),
+    nbins_param=5, min_per_bin=1, savefig=None,
+    logy=True, logx=False,
+    # NEW optional knobs (safe defaults match your old behavior)
+    use_global_bins=False,        # False = per-mass quantile bins (original behavior)
+    param_edges=None,             # e.g., (0,150,300,600,1200) to force fixed Hα-EW bins
+    ealpha=0.25, capsize=3
+):
     """
-    For each mass bin, bin 'param' (quantiles), and plot median R_e ± (16–84%) vs param.
+    For each mass bin, bin 'param' and plot median R_e ± (16–84%) vs param.
+    By default uses per-mass quantile bins (original behavior).
     """
     logM = np.asarray(logM); Re = np.asarray(Re_kpc); param = np.asarray(param)
     good = np.isfinite(logM) & np.isfinite(Re) & np.isfinite(param)
     logM, Re, param = logM[good], Re[good], param[good]
 
-    # param-bin edges per mass bin (use quantiles for robustness)
-    colors = plt.cm.viridis(np.linspace(0.15, 0.85, len(mass_bins)-1))
+    n_massbins = len(mass_bins) - 1
+    colors = plt.cm.viridis(np.linspace(0.15, 0.85, n_massbins))
     plt.figure(figsize=(8.5,6))
-    for i in range(len(mass_bins)-1):
+    ax = plt.gca()
+
+    # If you request global bins or explicit edges, prepare them once
+    global_edges = None
+    if param_edges is not None:
+        global_edges = np.unique(np.asarray(param_edges, dtype=float))
+    elif use_global_bins:
+        global_edges = np.unique(np.quantile(param, np.linspace(0,1,nbins_param+1)))
+
+    for i in range(n_massbins):
         m = (logM >= mass_bins[i]) & (logM < mass_bins[i+1])
-        if m.sum() < min_per_bin: 
+        if m.sum() < min_per_bin:
             continue
+
         x = param[m]; y = Re[m]
-        edges = np.quantile(x, np.linspace(0,1,nbins_param+1))
-        edges = np.unique(edges)  # guard against duplicates
+
+        # Decide bin edges for this mass bin
+        if global_edges is not None:
+            edges = global_edges
+        else:
+            edges = np.unique(np.quantile(x, np.linspace(0,1,nbins_param+1)))
+
         if len(edges) < 3:
             continue
 
@@ -657,33 +679,45 @@ def plot_size_vs_param_in_mass_bins(logM, Re_kpc, param, param_label,
         for j in range(len(edges)-1):
             sel = (x >= edges[j]) & (x < edges[j+1])
             if sel.sum() >= max(8, int(0.5*min_per_bin)):
-                xc.append(np.median(x[sel]))
+                # x-position = median param in the bin (matches your original)
+                xc.append(np.nanmedian(x[sel]))
                 med = np.nanmedian(y[sel])
                 p16 = np.nanpercentile(y[sel], 16)
                 p84 = np.nanpercentile(y[sel], 84)
                 y50.append(med); ylo.append(med - p16); yhi.append(p84 - med)
 
         if xc:
-            xc = np.array(xc); y50 = np.array(y50)
+            xc   = np.array(xc)
+            y50  = np.array(y50)
             yerr = np.vstack([np.array(ylo), np.array(yhi)])
             c = colors[i]
-            plt.errorbar(xc, y50, yerr=yerr, fmt='o-', color=c, lw=1.6, ms=5,
-                         ecolor=(0,0,0,0.25), elinewidth=1.0, capsize=3,
-                         label=f'log M* ∈ [{mass_bins[i]:.2f},{mass_bins[i+1]:.2f}] (n={m.sum()})')
+            plt.errorbar(
+                xc, y50, yerr=yerr,
+                fmt='o-', color=c, lw=1.6, ms=5,
+                ecolor=c, elinewidth=1.0, capsize=capsize, alpha=0.95,  # line
+            )
+            # make the bars a bit softer without hiding the line
+            plt.errorbar(
+                xc, y50, yerr=yerr,
+                fmt='none', ecolor=c, elinewidth=2.0, alpha=ealpha, capsize=0,
+                label=f'log M* ∈ [{mass_bins[i]:.2f},{mass_bins[i+1]:.2f}] (n={m.sum()})'
+            )
 
     if logy:
         plt.yscale('log')
-        # your decimal tick formatter:
-        pretty_log_y_as_decimals(plt.gca())
+        pretty_log_y_as_decimals(ax)
+    if logx:
+        plt.xscale('log')
 
     plt.xlabel(param_label)
     plt.ylabel('Median $R_\\mathrm{e}$ (kpc)')
-    plt.title('Size vs parameter at fixed mass (binned)')
     plt.grid(True, ls='--', alpha=0.4)
     plt.legend(framealpha=0.9)
     plt.tight_layout()
-    if savefig: plt.savefig(savefig, dpi=300, bbox_inches='tight')
+    if savefig:
+        plt.savefig(savefig, dpi=300, bbox_inches='tight')
     plt.show()
+
 
 def main(
     phot_fits, bagpipes_fits, galfit_fits, 
@@ -729,7 +763,7 @@ def main(
     radius_kpc_err = radius_kpc_err[final_mask]
 
     # Extreme PSB mask
-    is_extreme_psb = (burstiness_clean <= 1) & (halpha_clean <= 100)
+    is_extreme_psb = (burstiness_clean <= 0.5) & (halpha_clean <= 25)
     print("median r_e, median r_e_u1:",
       np.nanmedian(table_galfit['r_e']),
       np.nanmedian(table_galfit['r_e_u1']))
@@ -806,17 +840,26 @@ def main(
                 f"q={r['q']:.3g}  Δmedian(logR)={r['med_diff']:.3f} (~×{ratio:.2f})")
             
     # Choose mass bins you like:
-    mass_bins = [8.1, 8.6, 9.0, 9.5, 10.0]
+    mass_bins = [8.1, 8.6, 9.0, 9.5]
+
 
     plot_size_vs_param_in_mass_bins(stellar_mass_scaled, radius_kpc_clean,
                                     table_bagpipes_matched['burstiness_50'][final_mask],
-                                    'Burstiness (SFR recent/past)',
+                                    'Burstiness (SFR recent/past)', logx = True,
                                     mass_bins=mass_bins, savefig='Re_vs_burstiness_by_mass.png')
 
-    plot_size_vs_param_in_mass_bins(stellar_mass_scaled, radius_kpc_clean,
-                                    table_bagpipes_matched['Halpha_EW_rest_50'][final_mask],
-                                    r'H$\alpha$ EW (Å)',
-                                    mass_bins=mass_bins, savefig='Re_vs_HaEW_by_mass.png')
+    plot_size_vs_param_in_mass_bins(
+    logM=stellar_mass_scaled,
+    Re_kpc=radius_kpc_clean,
+    param=halpha_clean,                      # your array
+    param_label='Hα EW (Å)',
+    mass_bins = (8.1, 8.6, 9.0, 9.5),
+    logx=True, 
+    nbins_param=5,
+    use_global_bins=False,                # <- per-mass quantile bins (default)
+    savefig='Re_vs_HaEW_errorbars.png'
+)
+
 
     plot_size_vs_param_in_mass_bins(stellar_mass_scaled, radius_kpc_clean,
                                     table_bagpipes_matched['beta_C94_50'][final_mask],
