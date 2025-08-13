@@ -3,6 +3,13 @@ import numpy as np
 from astropy.table import Table
 from astropy.io import fits
 
+plt.rcParams.update({
+    "axes.labelsize": 15,   # axis label font
+    "xtick.labelsize": 13,  # tick label font
+    "ytick.labelsize": 13,
+    "legend.fontsize": 13,
+})
+
 def load_bagpipes_table(fits_path):
     """Load the Bagpipes output table from a FITS file."""
     with fits.open(fits_path) as hdulist:
@@ -25,7 +32,7 @@ def add_bershady_boundaries():
     C_late = 2.44 * logA_vals + 5.49
     plt.plot(C_late, logA_vals, color='black', linestyle='--', linewidth=1)
 
-def make_ca_plot(conc, log_asym, title='Concentration–Asymmetry Diagram',
+def make_ca_plot(conc, log_asym,
                  colour=None, label=None, save_path=None, add_bershady=True):
     """Plot concentration vs. log-asymmetry with optional colour coding and Bershady lines."""
     plt.figure(figsize=(7, 6), facecolor='white')
@@ -39,7 +46,7 @@ def make_ca_plot(conc, log_asym, title='Concentration–Asymmetry Diagram',
     # Plot PSBs on top
     plt.scatter(conc[colour], log_asym[colour],
                 color='tomato', alpha=0.8, s=20,
-                edgecolor='none', label='Burstiness<=1, Halpha EW<=100Å')
+                edgecolor='none', label='Burstiness<=0.5, Halpha EW<=25Å')
 
     if add_bershady:
         add_bershady_boundaries()
@@ -49,13 +56,12 @@ def make_ca_plot(conc, log_asym, title='Concentration–Asymmetry Diagram',
     plt.axhline(y=merger_threshold, color='black', linestyle='-', linewidth=1)
 
     # Annotate regions
-    plt.text(1.2, -0.15, "Merger", fontsize=12)
-    plt.text(1.1, -1.0, "LTG", fontsize=12)
-    plt.text(3.0, -1.5, "ETG", fontsize=12)
+    plt.text(1.2, -0.15, "Merger", fontsize=14)
+    plt.text(1.1, -1.0, "LTG", fontsize=14)
+    plt.text(3.0, -1.5, "ETG", fontsize=14)
 
     plt.xlabel("Concentration (C)")
     plt.ylabel("log₁₀(Asymmetry)")
-    plt.title(title)
     plt.xlim(1, 4)
     plt.grid(True, which='both', ls='--', alpha=0.5)
     plt.legend()
@@ -107,8 +113,7 @@ if __name__ == "__main__":
 
     halpha = table_bagpipes['Halpha_EW_rest_50']
     burstiness = table_bagpipes['burstiness_50']
-    is_extreme_psb = (halpha <= 100) & (burstiness <= 1)
+    is_extreme_psb = (halpha <= 25) & (burstiness <= 0.5)
     make_ca_plot(conc, log_asym,
-             title="C–log(A) Plot with Extreme PSBs Highlighted",
              colour=is_extreme_psb,  # Boolean mask
              save_path="concentration_asymmetry_plot.png")
