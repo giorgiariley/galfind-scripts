@@ -78,7 +78,7 @@ hdulist.close()
 #want to pick IDs where brustiness <1 and UV < 0.3
 
 ## Convert Bagpipes table into filter mask
-mask = (burstiness <= 1) & (halpha <= 100)
+mask = (burstiness <= 0.25) & (halpha <= 25)
 selected_ids = table_pipes['#ID'][mask]
 
 # Match IDs with catalogue (optional: intersect)
@@ -88,7 +88,7 @@ mask_in_cat = np.isin(cat_IDs, selected_ids)
 filtered_ids = cat_IDs[mask_in_cat]
 
 # Now safe to use in ID_Selector
-id_selector = ID_Selector(filtered_ids, "selected_burstiness_halpha")
+id_selector = ID_Selector(filtered_ids, "selected_burstiness0.5_halpha25")
 cat_selected = id_selector(cat)
 
 print(f"Number of selected IDs: {len(filtered_ids)}")
