@@ -11,6 +11,42 @@ plt.rcParams.update({
     "legend.fontsize": 13,
 })
 
+def _median_err_linear(p16, p50, p84):
+    """Return median symmetric error in *linear* units from 16/50/84 arrays."""
+    ok = np.isfinite(p16) & np.isfinite(p50) & np.isfinite(p84)
+    if not np.any(ok): 
+        return None
+    lo = p50[ok] - p16[ok]
+    hi = p84[ok] - p50[ok]
+    return float(np.nanmedian(0.5*(np.maximum(lo,0) + np.maximum(hi,0))))
+
+def _draw_rep_err(ax, x_frac=0.06, y_frac=0.86, xerr=None, yerr=None, color='black'):
+    """
+    Draw one representative error bar at a fractional location in axes coords.
+    Returns (x_frac, y_frac).
+    """
+    xmin, xmax = ax.get_xlim()
+    ymin, ymax = ax.get_ylim()
+
+    # convert frac -> data coords
+    x0 = xmin + x_frac * (xmax - xmin)
+    if ax.get_yscale() == 'log':
+        y0 = 10**(np.log10(ymin) + y_frac*(np.log10(ymax)-np.log10(ymin)))
+    else:
+        y0 = ymin + y_frac * (ymax - ymin)
+
+    ax.errorbar([x0], [y0],
+                xerr=None if xerr is None else [[xerr],[xerr]],
+                yerr=None if yerr is None else [[yerr],[yerr]],
+                fmt='none', ecolor=color, elinewidth=1.2, capsize=3, zorder=10)
+    return x_frac, y_frac
+
+def _label_rep_err(ax, x_frac, y_frac, text="Typical error bar", dx=0.02, dy=0.02):
+    ax.text(x_frac + dx, y_frac + dy, text,
+            transform=ax.transAxes, fontsize=12,
+            va='bottom', ha='left',
+            bbox=dict(boxstyle='round,pad=0.18', fc='white', ec='none', alpha=0.75))
+
 
 def load_bagpipes_table(fits_path):
     with fits.open(fits_path) as hdulist:
@@ -57,35 +93,35 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
 
     # coloring rule: special vs other
     special = (burst <= 0.5) & (Ha_rest <= 25)
-    other = ~special
+    other   = ~special
 
     plt.figure(figsize=(8,6), facecolor='white')
-    # red points and errors
-    plt.scatter(x[other], y[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            x[other], y[other],
-            xerr=xerr[:, other] if xerr is not None else None,
-            yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    ax = plt.gca()
 
-    # blue points and errors on top
-    plt.scatter(x[special], y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            x[special], y[special],
-            xerr=xerr[:, special] if xerr is not None else None,
-            yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    # points only (no per-point error bars)
+    ax.scatter(x[other],   y[other],   color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
+    ax.scatter(x[special], y[special], color='tomato',    alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
 
-    plt.xlabel("UV Colour (mag)")
-    plt.ylabel(f"{line_label} Equivalent Width (Å)")
-    # plt.yscale('log')
-    plt.grid(True); plt.legend(); plt.tight_layout()
-    plt.savefig(output_path, dpi=200); plt.close()
-    print(f"Saved plot to: {output_path}")
+    # y on log scale, start at 10^-1.5
+    ax.set_yscale('log')
+    ymin = 10**-1.5
+    ax.set_ylim(ymin, None)
+
+    ax.set_xlabel("UV Colour (mag)")
+    ax.set_ylabel(f"{line_label} Equivalent Width (Å)")
+    ax.grid(True)
+
+    # representative y error (use your y16/50/84 arrays)
+    rep_yerr = _median_err_linear(y16, y50, y84)
+    if rep_yerr is not None and np.isfinite(rep_yerr):
+        xf, yf = _draw_rep_err(ax, x_frac=0.8, y_frac=0.85, xerr=None, yerr=rep_yerr, color='black')
+        _label_rep_err(ax, xf, yf, text="Typical error bar", dx=-0.06, dy=0.05)
+
+
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
 
 def plot_Halpha_vs_OIII(table, output_path):
     z = table['input_redshift']
@@ -109,47 +145,38 @@ def plot_Halpha_vs_OIII(table, output_path):
     burst = burst[valid]
     Ha_rest = Ha_rest_50[valid]
 
-    def asy_rest(p16, p50, p84):
-        if p16 is None or p84 is None:
-            return None
-        p16 = (p16 / (1 + z))[valid]; p84 = (p84 / (1 + z))[valid]
-        lower = p50[valid]/(1+z[valid]) - p16
-        upper = p84 - p50[valid]/(1+z[valid])
-        return np.vstack([lower, upper])
-
-    xerr = asy_rest(O316, O350, O384)
-    yerr = asy_rest(Ha16, Ha50, Ha84)
+    # Representative error (median of all)
+    Ha_err = np.median((Ha84[valid] - Ha16[valid]) / (2 * (1 + z[valid])))
+    O3_err = np.median((O384[valid] - O316[valid]) / (2 * (1 + z[valid])))
 
     special = (burst <= 0.5) & (Ha_rest <= 25)
-    other = ~special
+    other   = ~special
 
-    plt.figure(figsize=(8,6), facecolor='white')
-    # red points and errors
-    plt.scatter(O3[other], Ha[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            O3[other], Ha[other],
-            xerr=xerr[:, other] if xerr is not None else None,
-            yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    fig, ax = plt.subplots(figsize=(8,6))
+    ax.scatter(O3[other],   Ha[other],   color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
+    ax.scatter(O3[special], Ha[special], color='tomato',    alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
 
-    # blue points and errors on top
-    plt.scatter(O3[special], Ha[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            O3[special], Ha[special],
-            xerr=xerr[:, special] if xerr is not None else None,
-            yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    # log–log, lower bounds at 10^-1.5
+    xmin = 10**-1.5; ymin = 10**-1.5
+    ax.set_xscale('log'); ax.set_yscale('log')
+    ax.set_xlim(xmin, None); ax.set_ylim(ymin, None)
 
-    plt.xlabel("[OIII] 5007 EW (rest-frame Å)")
-    plt.ylabel("Hα EW (rest-frame Å)")
-    # plt.yscale('log')
-    plt.grid(True); plt.legend(); plt.tight_layout()
-    plt.savefig(output_path, dpi=200); plt.close()
-    print(f"📁 Saved Hα vs. [OIII] rest-frame plot to: {output_path}")
+    ax.set_xlabel("[OIII] 5007 EW (rest-frame Å)")
+    ax.set_ylabel("Hα EW (rest-frame Å)")
+    ax.grid(True)
+
+    # representative errors: use medians of rest-frame errors
+    rep_xerr = _median_err_linear((O316/(1+z))[valid], (O350/(1+z))[valid], (O384/(1+z))[valid])
+    rep_yerr = _median_err_linear((Ha16/(1+z))[valid], (Ha50/(1+z))[valid], (Ha84/(1+z))[valid])
+    if (rep_xerr is not None) or (rep_yerr is not None):
+        xf, yf = _draw_rep_err(ax, x_frac=0.10, y_frac=0.78, xerr=rep_xerr, yerr=rep_yerr, color='black')
+        _label_rep_err(ax, 0.7, 0.6, text="Typical error bar", dx=0.01, dy=0.02)
+
+
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
 
 def plot_HaNII_vs_OIIIHb(table, output_path):
     z = table['input_redshift']
@@ -190,35 +217,31 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
     yerr = asy_sum_rest(L16, L50, L84)
 
     special = (burst <= 0.5) & (Ha_rest <= 25)
-    other = ~special
-    print(len(X[special]), len(Y[special]), len(X[other]), len(Y[other]))
-    plt.figure(figsize=(8,6), facecolor='white')
-    # red points and errors
-    plt.scatter(X[other], Y[other], color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            X[other], Y[other],
-            xerr=xerr[:, other] if xerr is not None else None,
-            yerr=yerr[:, other] if yerr is not None else None,
-            fmt='none', ecolor='royalblue', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    other   = ~special
 
-    # blue points and errors on top
-    plt.scatter(X[special], Y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
-    if xerr is not None or yerr is not None:
-        plt.errorbar(
-            X[special], Y[special],
-            xerr=xerr[:, special] if xerr is not None else None,
-            yerr=yerr[:, special] if yerr is not None else None,
-            fmt='none', ecolor='tomato', elinewidth=0.8, capsize=2, alpha=0.25
-        )
+    fig, ax = plt.subplots(figsize=(8,6))
+    ax.scatter(X[other],   Y[other],   color='royalblue', alpha=0.5, edgecolor='none', label='All other galaxies')
+    ax.scatter(X[special], Y[special], color='tomato',    alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
 
-    plt.xlabel("[OIII] + Hβ EW (rest-frame Å)")
-    plt.ylabel("Hα + [NII] EW (rest-frame Å)")
-    # plt.yscale('log')
-    plt.grid(True); plt.legend(); plt.tight_layout()
-    plt.savefig(output_path, dpi=200); plt.close()
-    print(f"📁 Saved plot with error bars to: {output_path}")
+    ax.set_xscale('log'); ax.set_yscale('log')
+    lim = 10**-1.5
+    ax.set_xlim(lim, None); ax.set_ylim(lim, None)
+
+    ax.set_xlabel("[OIII] + Hβ EW (rest-frame Å)")
+    ax.set_ylabel("Hα + [NII] EW (rest-frame Å)")
+    ax.grid(True)
+
+    # representative errors from summed components in rest frame
+    rep_xerr = _median_err_linear((R16/(1+z))[valid], (R50/(1+z))[valid], (R84/(1+z))[valid])
+    rep_yerr = _median_err_linear((L16/(1+z))[valid], (L50/(1+z))[valid], (L84/(1+z))[valid])
+    xf, yf = _draw_rep_err(ax, x_frac=0.10, y_frac=0.78, xerr=rep_xerr, yerr=rep_yerr, color='black')
+    _label_rep_err(ax, 0.7, 0.6, text="Typical error bar", dx=0.01, dy=0.02)
+
+
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    plt.close()
 
 
 
