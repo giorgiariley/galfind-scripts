@@ -24,17 +24,11 @@ def _get_p16_p50_p84(table, col_with_50):
 
 def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, ylim=None, highlight_mask=None,
                        capsize=2.0, ealpha=0.25):
-    """
-    x_column_50 must be the p50 column name, e.g. 'burstiness_50' or 'Ha_NII_EW_50'.
-    Draws asymmetric error bars from the _16 and _84 siblings if present.
-    """
     # y - get p16/p50/p84, then log10 with asymmetric errors
     y16, y50, y84 = _get_p16_p50_p84(table, 'xi_ion_caseB_rest_50')
-    # convert to log10 space for plotting and errors
     y = np.log10(y50)
     yerr = None
     if (y16 is not None) and (y84 is not None):
-        # Asymmetric errors in log space
         yerr_lower = np.log10(y50) - np.log10(y16)
         yerr_upper = np.log10(y84) - np.log10(y50)
         yerr = np.vstack([yerr_lower, yerr_upper])
@@ -59,56 +53,86 @@ def plot_xiion_against(table, x_column_50, output_path, xlabel=None, xlim=None, 
         np.isfinite(halpha_EW)
     )
 
-    colours = np.where(((burstiness[valid] <= 1) & (halpha_EW[valid] <= 100)), 'tomato', 'royalblue')
+    # Colour code
+    colours = np.where(((burstiness[valid] <= 0.5) & (halpha_EW[valid] <= 25)), 'tomato', 'royalblue')
+
+    # Convenience arrays restricted to valid entries
+    xv, yv = x[valid], y[valid]
+    blue_mask_v = (colours == 'royalblue')
+    red_mask_v  = (colours == 'tomato')
 
     plt.figure(figsize=(8, 6), facecolor='white')
 
-    # Scatter first
-    plt.scatter(x[valid], y[valid], alpha=0.6, c=colours, edgecolor='none')
-
-    # Error bars - draw per colour group so ecolor matches
+    # --- Plot order to ensure reds are on top ---
+    # 1) Blue error bars (lowest)
     if (xerr is not None) or (yerr is not None):
-        mask_crimson = valid.copy()
-        mask_crimson[valid] = colours == 'tomato'
-        mask_teal = valid.copy()
-        mask_teal[valid] = colours == 'royalblue'
+        mask_blue_full = valid.copy()
+        mask_blue_full[valid] = blue_mask_v
+        if np.any(mask_blue_full):
+            plt.errorbar(
+                x[mask_blue_full], y[mask_blue_full],
+                xerr=xerr[:, mask_blue_full] if xerr is not None else None,
+                yerr=yerr[:, mask_blue_full] if yerr is not None else None,
+                fmt='none', ecolor='royalblue', elinewidth=0.8, alpha=ealpha,
+                capsize=capsize, zorder=1
+            )
 
-        for m, ecolor in [(mask_crimson, 'tomato'), (mask_teal, 'royalblue')]:
-            if np.any(m):
-                plt.errorbar(
-                    x[m], y[m],
-                    xerr=xerr[:, m] if xerr is not None else None,
-                    yerr=yerr[:, m] if yerr is not None else None,
-                    fmt='none', ecolor=ecolor, elinewidth=0.8, alpha=ealpha, capsize=capsize
-                )
+    # 2) Blue points
+    if np.any(blue_mask_v):
+        plt.scatter(xv[blue_mask_v], yv[blue_mask_v],
+                    alpha=0.6, c='royalblue', edgecolor='none', zorder=2)
 
+    # 3) Red error bars
+    if (xerr is not None) or (yerr is not None):
+        mask_red_full = valid.copy()
+        mask_red_full[valid] = red_mask_v
+        if np.any(mask_red_full):
+            plt.errorbar(
+                x[mask_red_full], y[mask_red_full],
+                xerr=xerr[:, mask_red_full] if xerr is not None else None,
+                yerr=yerr[:, mask_red_full] if yerr is not None else None,
+                fmt='none', ecolor='tomato', elinewidth=0.8, alpha=ealpha,
+                capsize=capsize, zorder=3
+            )
+
+    # 4) Red points (highest)
+    if np.any(red_mask_v):
+        plt.scatter(xv[red_mask_v], yv[red_mask_v],
+                    alpha=0.6, c='tomato', edgecolor='none', zorder=4)
+
+    # Axes, labels, limits
     plt.xlabel(xlabel if xlabel else x_column_50.replace("_", " ").capitalize())
-    plt.ylabel(r"$\xi_{\mathrm{ion}}^{\mathrm{CaseB}}$ (Hz erg$^{-1}$)")
-    plt.title(fr"$\xi_{{\rm ion}}$ vs {xlabel if xlabel else x_column_50}")
+    plt.ylabel(r"log$\xi_{\mathrm{ion}}^{\mathrm{CaseB}}$ (Hz erg$^{-1}$)")
     plt.grid(True)
+    if xlim: plt.xlim(xlim)
+    if ylim: plt.ylim(ylim)
 
-    if xlim:
-        plt.xlim(xlim)
-    if ylim:
-        plt.ylim(ylim)
-
+    # Legend
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w', label='Extreme PSBs: Burstiness <= 1 & Halpha EW < 100Å ',
-               markerfacecolor='tomato', markersize=8),
         Line2D([0], [0], marker='o', color='w', label='Other',
-               markerfacecolor='royalblue', markersize=8)
+               markerfacecolor='royalblue', markersize=8),
+        Line2D([0], [0], marker='o', color='w',
+               label='Extreme PSBs: Burstiness <= 0.5 & Halpha EW < 25Å ',
+               markerfacecolor='tomato', markersize=8)
     ]
-    plt.legend(handles=legend_elements + (
-        [Line2D([0], [0], marker='*', color='w', label='Selected extremes',
-                markerfacecolor='gold', markeredgecolor='black', markersize=12)] if highlight_mask is not None else []
-    ))
+    if highlight_mask is not None:
+        legend_elements.append(
+            Line2D([0], [0], marker='*', color='w', label='Selected extremes',
+                   markerfacecolor='gold', markeredgecolor='black', markersize=12)
+        )
+    plt.legend(handles=legend_elements)
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     plt.close()
     print(f"📁 Saved plot with error bars to: {output_path}")
 
-
+plt.rcParams.update({
+    "axes.labelsize": 15,   # axis label font
+    "xtick.labelsize": 13,  # tick label font
+    "ytick.labelsize": 13,
+    "legend.fontsize": 13,
+})
 
 # Load FITS table
 fits_path = "/raid/scratch/work/Griley/GALFIND_WORK/Bagpipes/pipes/cats/v13/JADES-DR3-GS-East/ACS_WFC+NIRCam/Bagpipes_sfh_cont_bursty_zEAZYfspslarson_Calzetti_log_10_Z_log_10_BPASS_zfix.fits"
