@@ -196,7 +196,7 @@ yerr_alba = np.array([alba_err_lower, alba_err_upper])
 n_iter = 1000
 
 # Create masks for defining post-starburst galaxies
-low_burst_mask = (burstiness <= 1) & (halpha <= 100)
+low_burst_mask = (burstiness <= 0.5) & (halpha <= 25)
 high_burst_mask = ~low_burst_mask
 balmer_low_burst = balmer_breaks[low_burst_mask]
 balmer_high_burst = balmer_breaks[high_burst_mask]
@@ -302,35 +302,51 @@ nonzero_mask1 = counts_low > 0
 nonzero_mask2 = counts_high > 0
 
 
-# --- Plot ---
-plt.figure(figsize=(8, 6), facecolor='white')
+# --- Plot (bigger fonts, no title) ---
+# You can also put this rcParams update once at the top of your script if you like.
+plt.rcParams.update({
+    "axes.labelsize": 17,   # axis label font
+    "xtick.labelsize": 14,  # tick label font
+    "ytick.labelsize": 14,
+    "legend.fontsize": 13,
+})
+
+fig, ax = plt.subplots(figsize=(8, 6), facecolor='white')
 
 # Error bars
 nonzero_mask1 = counts_low > 0
 nonzero_mask2 = counts_high > 0
-plt.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1],
-             yerr=errors_low[nonzero_mask1], fmt='o', color='tomato', capsize=3, zorder=3)
-plt.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2],
-             yerr=errors_high[nonzero_mask2], fmt='o', color='royalblue', capsize=3, zorder=3)
+ax.errorbar(bin_centres[nonzero_mask1], counts_low[nonzero_mask1],
+            yerr=errors_low[nonzero_mask1], fmt='o', color='tomato',
+            capsize=3, zorder=3)
+ax.errorbar(bin_centres[nonzero_mask2], counts_high[nonzero_mask2],
+            yerr=errors_high[nonzero_mask2], fmt='o', color='royalblue',
+            capsize=3, zorder=3)
 
 # Shaded MC ranges
-plt.fill_between(x_vals, pdf_low_p16,  pdf_low_p84,  color='tomato', alpha=0.2)
-plt.fill_between(x_vals, pdf_high_p16, pdf_high_p84, color='royalblue', alpha=0.15)
+ax.fill_between(x_vals, pdf_low_p16,  pdf_low_p84,  color='tomato',    alpha=0.2)
+ax.fill_between(x_vals, pdf_high_p16, pdf_high_p84, color='royalblue', alpha=0.15)
 
 # Median curves
-plt.plot(x_vals, pdf_low_median,  'r--',
-         label=f'Burstiness <= 1, Hα <= 100: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
-plt.plot(x_vals, pdf_high_median, 'b--', label='Other: exGaussian (bootstrap median)')
+ax.plot(x_vals, pdf_low_median,  'r--',
+        label=f'Burstiness ≤ 0.5, Hα ≤ 25: μ={mu_low_mean:.2f}±{mu_low_std:.2f}, σ={sigma_low_mean:.2f}±{sigma_low_std:.2f}')
+ax.plot(x_vals, pdf_high_median, 'b--',
+        label='Other: exGaussian (bootstrap median)')
 
+# Labels & limits (no title)
+ax.set_xlabel("Balmer Break Strength (mag)", fontsize=17)
+ax.set_ylabel("Probability Density", fontsize=17)
+ax.set_xlim(-0.5, 1.5)
+ax.set_ylim(0, max(counts_low.max(), counts_high.max()) * 1.2)
 
-# Labels & limits
-plt.xlabel("Balmer Break Strength (mag)")
-plt.ylabel("Probability Density")
-plt.xlim(-0.5, 1.5)
-plt.ylim(0, max(counts_low.max(), counts_high.max()) * 1.2)
-plt.legend()
-plt.tight_layout()
-plt.savefig("balmer_break_comparison_MCshaded.png")
+# Bigger tick labels
+ax.tick_params(axis='both', which='both', labelsize=14)
+
+# Legend
+ax.legend(frameon=True)
+
+fig.tight_layout()
+fig.savefig("balmer_break_comparison_MCshaded.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 total_number_density = len(balmer_breaks) / volume
