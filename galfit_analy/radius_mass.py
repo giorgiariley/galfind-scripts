@@ -7,6 +7,8 @@ import astropy.units as u
 import os
 import matplotlib.ticker as mticker
 from scipy.stats import ks_2samp
+from matplotlib import colors as mcolors
+
 
 plt.rcParams.update({
     "axes.labelsize": 15,   # axis label font
@@ -14,6 +16,63 @@ plt.rcParams.update({
     "ytick.labelsize": 13,
     "legend.fontsize": 13,
 })
+
+def lighten(color, amount=0.5):
+    """Blend a color toward white by `amount` (0=no change, 1=white)."""
+    c = mcolors.to_rgb(color)
+    return tuple(1 - amount*(1 - np.array(c)))
+
+def fit_powerlaw_params(x, y, yerr=None, use_logy=True):
+    """
+    Fit log10(y) = a + b*(x - x0). Returns dict(a,b,x0,use_logy).
+    Accepts asymmetric yerr as 2xN [lo,hi] in *linear* units.
+    """
+    x = np.asarray(x); y = np.asarray(y)
+    finite = np.isfinite(x) & np.isfinite(y) & (y > 0)
+    x, y = x[finite], y[finite]
+    if yerr is not None:
+        yerr = np.asarray(yerr)[:, finite] if (np.ndim(yerr) == 2 and yerr.shape[0] == 2) else np.asarray(yerr)[finite]
+    # convert to log space if requested
+    if use_logy:
+        Y = np.log10(y)
+        if yerr is None:
+            w = None
+        else:
+            if yerr.ndim == 2 and yerr.shape[0] == 2:
+                lo = np.clip(yerr[0], 1e-12, None); hi = np.clip(yerr[1], 1e-12, None)
+                sig_lo = np.log10(y) - np.log10(np.maximum(y - lo, 1e-12))
+                sig_hi = np.log10(np.maximum(y + hi, 1e-12)) - np.log10(y)
+                sig = 0.5*(sig_lo + sig_hi)
+            else:
+                e = np.clip(yerr, 1e-12, None)
+                sig = (np.log10(y + e) - np.log10(np.maximum(y - e, 1e-12)))/2.0
+            w = 1.0/np.maximum(sig, 1e-6)
+    else:
+        Y = y
+        if yerr is None:
+            w = None
+        else:
+            if yerr.ndim == 2 and yerr.shape[0] == 2:
+                yerr = 0.5*(yerr[0] + yerr[1])
+            w = 1.0/np.maximum(yerr, 1e-6)
+
+    x0 = np.nanmedian(x)
+    X  = x - x0
+    coeff = np.polyfit(X, Y, 1, w=w) if w is not None else np.polyfit(X, Y, 1)
+    b, a = coeff[0], coeff[1]
+    return dict(a=a, b=b, x0=x0, use_logy=use_logy)
+
+def plot_powerlaw_line_over_data(ax, params, x_data, color='k', lw=2.2, zorder=3, pad_frac=0.03):
+    """Draw the fitted line only across the data range of x_data (with a tiny pad)."""
+    x_data = np.asarray(x_data)
+    xmin, xmax = np.nanmin(x_data), np.nanmax(x_data)
+    span = xmax - xmin if np.isfinite(xmax - xmin) and (xmax > xmin) else 1.0
+    xr = np.linspace(xmin - pad_frac*span, xmax + pad_frac*span, 200)
+    yr = params['a'] + params['b']*(xr - params['x0'])
+    yline = 10**yr if params['use_logy'] else yr
+    ax.plot(xr, yline, color=color, lw=lw, zorder=zorder)
+
+
 
 def ks_size_by_mass_bin(stellar_mass, radius_kpc, is_extreme_psb,
                         bins=None, nbins=16, min_per_group=5,
@@ -480,22 +539,32 @@ def plot_binned_mass_vs_radius(
     # other galaxies
     x_o, xerr_o, y_o, yerr_o = bin_stats(~is_extreme_psb)
     if x_o.size:
+        pars_o = fit_powerlaw_params(x_o, y_o, yerr=yerr_o, use_logy=True)
+        slope_o = pars_o['b']
+        plot_powerlaw_line_over_data(plt.gca(), pars_o, x_o,
+                                    color=lighten(c_other, 0.55), lw=2.4, zorder=2.5)
         plt.errorbar(
             x_o, y_o, xerr=xerr_o, yerr=yerr_o,
-            fmt='o-', color=c_other, lw=1.6, ms=5,
+            fmt='o-', color=c_other, lw=1.8, ms=5,
             ecolor=soft(c_other, 0.35), elinewidth=1.0, capsize=2, capthick=1,
-            label='Other galaxies', zorder=3
+            label=f'Other galaxies (slope={slope_o:.2f})', zorder=3
         )
 
-    # extreme PSBs
+
+    # extreme PSBs (binned points)
     x_p, xerr_p, y_p, yerr_p = bin_stats(is_extreme_psb)
     if x_p.size:
+        pars_p = fit_powerlaw_params(x_p, y_p, yerr=yerr_p, use_logy=True)
+        slope_p = pars_p['b']
+        plot_powerlaw_line_over_data(plt.gca(), pars_p, x_p,
+                                    color=lighten(c_psb, 0.55), lw=2.4, zorder=4.2)
         plt.errorbar(
             x_p, y_p, xerr=xerr_p, yerr=yerr_p,
-            fmt='o-', color=c_psb, lw=1.6, ms=5,
+            fmt='o-', color=c_psb, lw=1.8, ms=5,
             ecolor=soft(c_psb, 0.35), elinewidth=1.0, capsize=2, capthick=1,
-            label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)', zorder=4
+            label=f'Extreme PSBs (slope={slope_p:.2f})', zorder=4.5
         )
+
 
     # Westcott comparison (no x-errors)
     ext = load_fits_table("/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits", hdu_index=1)
@@ -536,7 +605,7 @@ def plot_binned_mass_vs_radius(
 
 def plot_binned_redshift_vs_radius(
     redshifts, radius_kpc, is_extreme_psb,
-    nbins=12, savefig=None, mass_cut_applied=False, min_per_bin=3,
+    nbins=12, savefig=None, mass_cut_applied=True, min_per_bin=3,
     err_alpha=0.7
 ):
     """
@@ -574,21 +643,36 @@ def plot_binned_redshift_vs_radius(
 
     fig, ax = plt.subplots(figsize=(9,6))
 
-    # Other galaxies
+        # Other galaxies (binned series + fit)
     xo, yo, yerr_o = y_stats(~psb)
     if xo.size:
-        ax.plot(xo, yo, 'o-', color='royalblue', alpha=0.9, label='Other galaxies', zorder=3)
+        pars_o = fit_powerlaw_params(xo, yo, yerr=yerr_o, use_logy=True)
+        slope_o = pars_o['b']
+        # light fit line behind
+        plot_powerlaw_line_over_data(ax, pars_o, xo,
+                                     color=lighten('royalblue', 0.55),
+                                     lw=2.4, zorder=3.0)
+        # dark binned series with label incl. slope
+        ax.plot(xo, yo, 'o-', color='royalblue', alpha=0.95,
+                label=f'Other galaxies (slope={slope_o:.2f})', zorder=3.5)
         ax.errorbar(xo, yo, yerr=yerr_o, fmt='none', ecolor='royalblue',
-                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
+                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=3.3)
 
-    # Extreme PSBs
+    # Extreme PSBs (binned series + fit)
     xp, yp, yerr_p = y_stats(psb)
     if xp.size:
+        pars_p = fit_powerlaw_params(xp, yp, yerr=yerr_p, use_logy=True)
+        slope_p = pars_p['b']
+        plot_powerlaw_line_over_data(ax, pars_p, xp,
+                                     color=lighten('tomato', 0.55),
+                                     lw=2.4, zorder=4.0)
         ax.plot(xp, yp, 'o-', color='tomato', alpha=0.95,
                 markeredgecolor='white', markeredgewidth=0.8,
-                label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)', zorder=4)
+                label=f'Extreme PSBs (slope={slope_p:.2f})', zorder=4.5)
         ax.errorbar(xp, yp, yerr=yerr_p, fmt='none', ecolor='tomato',
-                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=2)
+                    elinewidth=1.0, capsize=3, alpha=err_alpha, zorder=4.3)
+
+
 
     # Westcott comparison, binned on the same z bins (no x-err)
     external_fits = "/raid/scratch/work/Griley/GALFIND_WORK/EPOCHS_XI_structural_parameters.fits"
