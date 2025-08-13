@@ -3,6 +3,15 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 from astropy.table import Table
 
+# (Optional) put this once near the top of your script to set global font sizes
+plt.rcParams.update({
+    "axes.labelsize": 15,   # axis label font
+    "xtick.labelsize": 13,  # tick label font
+    "ytick.labelsize": 13,
+    "legend.fontsize": 13,
+})
+
+
 def load_bagpipes_table(fits_path):
     with fits.open(fits_path) as hdulist:
         table = Table(hdulist[1].data)
@@ -47,7 +56,7 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
     yerr = asy(y16, y50, y84)
 
     # coloring rule: special vs other
-    special = (burst <= 1) & (Ha_rest <= 100)
+    special = (burst <= 0.5) & (Ha_rest <= 25)
     other = ~special
 
     plt.figure(figsize=(8,6), facecolor='white')
@@ -62,7 +71,7 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
         )
 
     # blue points and errors on top
-    plt.scatter(x[special], y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(x[special], y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             x[special], y[special],
@@ -73,7 +82,7 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
 
     plt.xlabel("UV Colour (mag)")
     plt.ylabel(f"{line_label} Equivalent Width (Å)")
-    plt.title(f"{line_label} EW vs. UV Colour")
+    # plt.yscale('log')
     plt.grid(True); plt.legend(); plt.tight_layout()
     plt.savefig(output_path, dpi=200); plt.close()
     print(f"Saved plot to: {output_path}")
@@ -111,7 +120,7 @@ def plot_Halpha_vs_OIII(table, output_path):
     xerr = asy_rest(O316, O350, O384)
     yerr = asy_rest(Ha16, Ha50, Ha84)
 
-    special = (burst <= 1) & (Ha_rest <= 100)
+    special = (burst <= 0.5) & (Ha_rest <= 25)
     other = ~special
 
     plt.figure(figsize=(8,6), facecolor='white')
@@ -126,7 +135,7 @@ def plot_Halpha_vs_OIII(table, output_path):
         )
 
     # blue points and errors on top
-    plt.scatter(O3[special], Ha[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(O3[special], Ha[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             O3[special], Ha[special],
@@ -137,7 +146,7 @@ def plot_Halpha_vs_OIII(table, output_path):
 
     plt.xlabel("[OIII] 5007 EW (rest-frame Å)")
     plt.ylabel("Hα EW (rest-frame Å)")
-    plt.title("Hα vs [OIII] with asymmetric errors")
+    # plt.yscale('log')
     plt.grid(True); plt.legend(); plt.tight_layout()
     plt.savefig(output_path, dpi=200); plt.close()
     print(f"📁 Saved Hα vs. [OIII] rest-frame plot to: {output_path}")
@@ -180,7 +189,7 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
     xerr = asy_sum_rest(R16, R50, R84)
     yerr = asy_sum_rest(L16, L50, L84)
 
-    special = (burst <= 1) & (Ha_rest <= 100)
+    special = (burst <= 0.5) & (Ha_rest <= 25)
     other = ~special
     print(len(X[special]), len(Y[special]), len(X[other]), len(Y[other]))
     plt.figure(figsize=(8,6), facecolor='white')
@@ -195,7 +204,7 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
         )
 
     # blue points and errors on top
-    plt.scatter(X[special], Y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 1 and Hα ≤ 100 Å')
+    plt.scatter(X[special], Y[special], color='tomato', alpha=0.7, edgecolor='none', label='Burstiness ≤ 0.5 and Hα ≤ 25 Å')
     if xerr is not None or yerr is not None:
         plt.errorbar(
             X[special], Y[special],
@@ -206,7 +215,7 @@ def plot_HaNII_vs_OIIIHb(table, output_path):
 
     plt.xlabel("[OIII] + Hβ EW (rest-frame Å)")
     plt.ylabel("Hα + [NII] EW (rest-frame Å)")
-    plt.title("(Hα + [NII]) vs ([OIII] + Hβ) with asymmetric errors")
+    # plt.yscale('log')
     plt.grid(True); plt.legend(); plt.tight_layout()
     plt.savefig(output_path, dpi=200); plt.close()
     print(f"📁 Saved plot with error bars to: {output_path}")
