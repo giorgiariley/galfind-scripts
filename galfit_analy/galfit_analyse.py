@@ -155,49 +155,6 @@ def bin_median(x, y, bins):
     return bin_centres, np.array(medians), np.array(stds), np.array(counts)
 
 
-def plot_binned_mass_radius(stellar_mass, radius_kpc, burstiness, bins, savepath=None):
-    """
-    Plot the mass–radius relation split into bursty and smouldering galaxies.
-
-    Parameters:
-        stellar_mass (array): log10 stellar mass
-        radius_kpc (array): effective radius in kpc
-        burstiness (array): burstiness parameter
-        bins (array): bin edges for stellar mass
-        savepath (str): optional path to save the figure
-    """
-    # Define bursty and smouldering masks
-    mask_bursty = burstiness > 2
-    mask_smoulder = burstiness < 2
-
-    # Bin the data
-    mass_centres, radius_bursty, std_bursty, _ = bin_median(
-        stellar_mass[mask_bursty], radius_kpc[mask_bursty], bins
-    )
-    _, radius_smoulder, std_smoulder, _ = bin_median(
-        stellar_mass[mask_smoulder], radius_kpc[mask_smoulder], bins
-    )
-
-    # Plot
-    plt.figure(figsize=(10, 6), facecolor='white')
-    plt.errorbar(mass_centres, radius_bursty, yerr=std_bursty, fmt='-o', color='crimson', label='Bursty (burstiness > 2)')
-    plt.errorbar(mass_centres, radius_smoulder, yerr=std_smoulder, fmt='-s', color='navy', label='Smouldering (burstiness < 2)')
-    plt.axvline(8.1, linestyle='--', color='blue', label='90% completeness')
-    plt.yscale('log')
-    plt.xlabel('Stellar Mass (log₁₀ M☉)')
-    plt.ylabel('Median Radius (kpc)')
-    plt.title('Mass–Radius Relation (Binned by 0.5 dex)')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-
-    if savepath:
-        plt.savefig(savepath)
-    plt.show()
-
-import numpy as np
-import matplotlib.pyplot as plt
-
 def binned_trend_vs_redshift(z, y, y_label, mass=None, mass_cut=None, bin_width=0.5, title='', save_name='plot.png'):
     """
     Plot binned median of y vs redshift, optionally applying a stellar mass cut.
@@ -255,13 +212,7 @@ def binned_trend_vs_redshift(z, y, y_label, mass=None, mass_cut=None, bin_width=
 
 mass_bins = np.arange(7, 11.5, 0.5)
 
-plot_binned_mass_radius(
-    stellar_mass=stellar_mass_clean,
-    radius_kpc=radius_kpc_clean,
-    burstiness=burstiness_clean,
-    bins=mass_bins,
-    savepath="mass_radius_binned_bursty_vs_smouldering.png"
-)
+
 
 binned_trend_vs_redshift(
     z=redshifts[reliable_mask],
