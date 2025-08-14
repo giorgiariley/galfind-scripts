@@ -9,7 +9,6 @@ import matplotlib.ticker as mticker
 from scipy.stats import ks_2samp
 from matplotlib import colors as mcolors
 
-
 plt.rcParams.update({
     "axes.labelsize": 15,   # axis label font
     "xtick.labelsize": 13,  # tick label font
@@ -71,8 +70,6 @@ def plot_powerlaw_line_over_data(ax, params, x_data, color='k', lw=2.2, zorder=3
     yr = params['a'] + params['b']*(xr - params['x0'])
     yline = 10**yr if params['use_logy'] else yr
     ax.plot(xr, yline, color=color, lw=lw, zorder=zorder)
-
-
 
 def ks_size_by_mass_bin(stellar_mass, radius_kpc, is_extreme_psb,
                         bins=None, nbins=16, min_per_group=5,
@@ -344,10 +341,10 @@ def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84,
 
     # points only
     ax.scatter(stellar_mass[m_other], radius_kpc[m_other],
-               s=18, color='tomato', alpha=0.6, edgecolor='none',
+               s=18, color='Royalblue', alpha=0.6, edgecolor='none',
                label='All other galaxies')
     ax.scatter(stellar_mass[m_psb], radius_kpc[m_psb],
-               s=22, color='royalblue', alpha=0.9, edgecolor='black',
+               s=22, color='tomato', alpha=0.9, edgecolor='black',
                linewidth=0.2,
                label='Extreme PSBs (burstiness ≤ 0.5 & Hα EW ≤ 25 Å)')
 
@@ -414,7 +411,6 @@ def plot_mass_vs_radius(stellar_mass, stellar_mass_16, stellar_mass_84,
         plt.savefig(savefig)
     plt.close()
 
-
 def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
                             savefig=None, mass_cut_applied=False, radius_kpc_err=None):
     """Scatter plot of redshift vs. effective radius with two side-by-side 'typical' error bars."""
@@ -460,8 +456,8 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
         return x0, y0, ey
 
     # two bars (offset in x so they don't overlap)
-    pos_other = _add_typical(ax, ~m, 'tomato',    x_frac=0.06,  y_frac=0.10)
-    pos_psb   = _add_typical(ax,  m, 'royalblue', x_frac=0.085, y_frac=0.10)
+    pos_other = _add_typical(ax, ~m, 'royalblue',    x_frac=0.06,  y_frac=0.10)
+    pos_psb   = _add_typical(ax,  m, 'tomato', x_frac=0.085, y_frac=0.10)
 
     # label slightly ABOVE the bars
     xmin, xmax = ax.get_xlim(); ymin, ymax = ax.get_ylim()
@@ -481,7 +477,6 @@ def plot_radius_vs_redshift(redshifts, radius_kpc, is_extreme_psb,
     if savefig:
         plt.savefig(savefig)
     plt.close()
-
 
 def plot_binned_mass_vs_radius(
     stellar_mass, stellar_mass_16, stellar_mass_84,
@@ -802,7 +797,6 @@ def plot_size_vs_param_in_mass_bins(
         plt.savefig(savefig, dpi=300, bbox_inches='tight')
     plt.show()
 
-
 def main(
     phot_fits, bagpipes_fits, galfit_fits, 
     filter_name='F444W', phot_idcol='NUMBER', bagpipes_idcol='#ID',     
@@ -846,29 +840,13 @@ def main(
     stellar_mass_scaled_84 = table_bagpipes_matched['stellar_mass_84'][final_mask]
     radius_kpc_err = radius_kpc_err[final_mask]
 
+    if radius_kpc_clean.size:
+        print(f"Max effective radius after cleaning: {np.nanmax(radius_kpc_clean):.3f} kpc")
+    else:
+        print("No galaxies passed the cleaning mask – cannot compute max radius.")
+
     # Extreme PSB mask
     is_extreme_psb = (burstiness_clean <= 0.5) & (halpha_clean <= 25)
-    print("median r_e, median r_e_u1:",
-      np.nanmedian(table_galfit['r_e']),
-      np.nanmedian(table_galfit['r_e_u1']))
-    
-    # sanity check one object (replace z0, r_pix0, e_pix0 with medians)
-    z0 = np.nanmedian(redshifts)
-    kpc_per_arcsec = (cosmo.angular_diameter_distance(z0).to(u.kpc).value) / u.radian.to(u.arcsec)
-    pixscale = 0.03  # verify this!
-    r_pix0   = 3.49
-    e_pix0   = 0.1765
-
-    r_kpc0   = r_pix0 * pixscale * kpc_per_arcsec
-    e_kpc0   = e_pix0 * pixscale * kpc_per_arcsec
-    print(r_kpc0, e_kpc0)   # should look reasonable (e.g., error ~ few % of value)
-
-
-    # Monte Carlo sampling
-    # mass_samples, radius_samples = monte_carlo_mass_radius(
-    #     table_galfit_matched[final_mask], table_bagpipes_matched[final_mask],
-    #     pdf_dir, id_column='id', n_samples=500
-    # )
 
     # ---- PLOTS ----
     plot_mass_vs_radius(
@@ -949,10 +927,6 @@ def main(
                                     table_bagpipes_matched['beta_C94_50'][final_mask],
                                     r'UV slope $\beta$',
                                     mass_bins=mass_bins, savefig='Re_vs_beta_by_mass.png')
-
-
-
-
 
 if __name__ == "__main__":
     main(
