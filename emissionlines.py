@@ -54,19 +54,23 @@ def load_bagpipes_table(fits_path):
     return table
 
 def _p16_p50_p84(table, col50):
-    if not col50.endswith('_50'):
-        raise ValueError(f"Expected a _50 column, got {col50}")
-    stem = col50[:-3]
-    p50 = table[col50]
-    p16 = table[stem + '_16'] if (stem + '_16') in table.colnames else None
-    p84 = table[stem + '_84'] if (stem + '_84') in table.colnames else None
+    """
+    Return (p16, p50, p84) for a percentile triplet.
+    If the 16/84 columns are missing, returns None for them.
+    """
+    stem = col50[:-3] if col50.endswith('_50') else col50
+    # 50 must exist
+    p50 = np.asarray(table[stem + '_50'], dtype=float)
+    p16 = np.asarray(table[stem + '_16'], dtype=float) if (stem + '_16') in table.colnames else None
+    p84 = np.asarray(table[stem + '_84'], dtype=float) if (stem + '_84') in table.colnames else None
     return p16, p50, p84
+
 
 def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
     # y
     y16, y50, y84 = _p16_p50_p84(table, line_column)
     # x
-    x16, x50, x84 = _p16_p50_p84(table, 'UV_colour_50') if 'UV_colour_50' in table.colnames else (None, table['UV_colour_50'], None)
+    x16, x50, x84 = _p16_p50_p84(table, 'UV_colour_50')
 
     burst = table['burstiness_50']
     Ha_rest_50 = table['Halpha_EW_rest_50']
@@ -111,10 +115,13 @@ def plot_EW_vs_UV_colour(table, line_column, line_label, output_path):
     ax.set_ylabel(f"{line_label} Equivalent Width (Å)")
     ax.grid(True)
 
-    # representative y error (use your y16/50/84 arrays)
+    # representative errors from percentiles
+    rep_xerr = _median_err_linear(x16, x50, x84)  # will be None if 16/84 missing
     rep_yerr = _median_err_linear(y16, y50, y84)
-    if rep_yerr is not None and np.isfinite(rep_yerr):
-        xf, yf = _draw_rep_err(ax, x_frac=0.8, y_frac=0.85, xerr=None, yerr=rep_yerr, color='black')
+
+    if (rep_xerr is not None) or (rep_yerr is not None):
+        xf, yf = _draw_rep_err(ax, x_frac=0.80, y_frac=0.85,
+                            xerr=rep_xerr, yerr=rep_yerr, color='black')
         _label_rep_err(ax, xf, yf, text="Typical error bar", dx=-0.06, dy=0.05)
 
 
