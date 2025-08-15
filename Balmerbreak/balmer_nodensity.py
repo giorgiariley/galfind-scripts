@@ -337,7 +337,7 @@ ax.plot(x_vals, pdf_high_median, 'b--',
 ax.set_xlabel("Balmer Break Strength (mag)", fontsize=17)
 ax.set_ylabel("Probability Density", fontsize=17)
 ax.set_xlim(-0.5, 1.5)
-ax.set_ylim(0, max(counts_low.max(), counts_high.max()) * 1.2)
+ax.set_ylim(0, max(counts_low.max(), counts_high.max()) * 1.5)
 
 # Bigger tick labels
 ax.tick_params(axis='both', which='both', labelsize=14)
