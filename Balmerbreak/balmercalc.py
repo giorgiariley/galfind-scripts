@@ -17,6 +17,14 @@ from galfind import (
 )
 from galfind.Data import morgan_version_to_dir
 
+# nicer defaults
+plt.rcParams.update({
+    "axes.labelsize": 15,
+    "xtick.labelsize": 13,
+    "ytick.labelsize": 13,
+    "legend.fontsize": 14,
+})
+
 #sample selection
 class Austin25_unmasked_criteria(Multiple_Mask_Selector):
     def __init__(self):
@@ -145,7 +153,6 @@ def process_galaxy(galaxy, idx: int, aper, sample_fitter, sed_fitter, output_fol
     plt.axvspan(0.4150, 0.4250, color='red', alpha=0.2, label='4150–4250 Å')
     plt.xlabel("Rest-frame Wavelength (μm)")
     plt.ylabel("AB Mags")
-    plt.title(f"Best-fit SED for galaxy {idx} using Bagpipes at redshift {z_pipes:.2f}")
     plt.legend(); plt.tight_layout()
     plt.grid(alpha=0.3); plt.savefig(plot_path); plt.close()
 
