@@ -16,6 +16,16 @@ def load_fits_table(fits_path, hdu_index=1):
         table = Table(hdulist[hdu_index].data)
     return table
 
+def _sfr_xlabel(sfr_col: str) -> str:
+    s = sfr_col.lower()
+    if '10myr' in s:
+        return r"SFR$_{10\,\mathrm{Myr}}$ [M$_\odot$ yr$^{-1}$]"
+    # your pipeline uses `sfr_50` for 100 Myr average
+    if s == 'sfr_50' or '100' in s:
+        return r"SFR$_{100\,\mathrm{Myr}}$ [M$_\odot$ yr$^{-1}$]"
+    return r"SFR [M$_\odot$ yr$^{-1}$]"
+
+
 def match_three_tables_by_id(table1, table2, table3, col1, col2, col3):
     ids1 = table1[col1].astype(str)
     ids2 = table2[col2].astype(str)
@@ -185,6 +195,79 @@ def plot_sfr_vs_mass(table_bagpipes, psb_mask, sfr_col='sfr_50', mass_col='stell
     plt.close()
     print(f"Saved SFR vs mass plot to: {outpath}")
 
+def plot_sfr_hist_with_floor(table_bagpipes, psb_mask,
+                             sfr_col='sfr_50', mass_col='stellar_mass_50',
+                             mass_limit=9.0,          # <-- set to YOUR completeness (log10 M/Msun)
+                             floor=1.0,               # floor SFR to 1 Msun/yr (lower limit)
+                             nbins=25,
+                             density=True,
+                             outpath='sfr_hist_floor.png'):
+    """
+    Make PSB vs Other histograms of SFR with a lower-limit floor,
+    using only galaxies above the stellar-mass completeness limit.
+    """
+    mass = np.asarray(table_bagpipes[mass_col], dtype=float)
+    sfr  = np.asarray(table_bagpipes[sfr_col],  dtype=float)
+
+    # valid & complete
+    finite = np.isfinite(mass) & np.isfinite(sfr)
+    keep   = finite & (mass >= mass_limit)
+
+    if not np.any(keep):
+        print(f"[WARN] No galaxies pass mass completeness (M >= {mass_limit}). Skipping {outpath}.")
+        return
+
+    psb_keep   = psb_mask[keep]
+    sfr_sel    = sfr[keep]
+
+    sfr_psb_raw   = sfr_sel[psb_keep]
+    sfr_other_raw = sfr_sel[~psb_keep]
+
+    # apply lower-limit floor
+    sfr_psb   = np.maximum(sfr_psb_raw,   floor)
+    sfr_other = np.maximum(sfr_other_raw, floor)
+
+    # log bins from floor to max
+    s_all = np.concatenate([sfr_psb, sfr_other])
+    smax  = np.nanmax(s_all)
+    if not np.isfinite(smax) or smax <= floor:
+        smax = floor * 10.0
+    bins = np.logspace(np.log10(floor), np.log10(smax), nbins)
+
+    # fractions censored (i.e., originally below floor)
+    frac_c_psb   = (sfr_psb_raw   < floor).sum() / max(1, sfr_psb_raw.size)
+    frac_c_other = (sfr_other_raw < floor).sum() / max(1, sfr_other_raw.size)
+
+    # plot
+    plt.figure(figsize=(8,6), facecolor='white')
+    plt.hist(sfr_other, bins=bins, histtype='step', linewidth=2, density=density,
+             color='royalblue',
+             label=f"Other (n={sfr_other_raw.size}, below SFR 1: {100*frac_c_other:.0f}%)")
+    plt.hist(sfr_psb,   bins=bins, histtype='step', linewidth=2, density=density,
+             color='tomato',
+             label=f"PSB (n={sfr_psb_raw.size}, below SFR 1: {100*frac_c_psb:.0f}%)")
+
+    # medians after flooring
+    if sfr_other.size: plt.axvline(np.nanmedian(sfr_other), color='royalblue', ls='--', alpha=0.8)
+    if sfr_psb.size:   plt.axvline(np.nanmedian(sfr_psb),   color='tomato',   ls='--', alpha=0.8)
+
+    # annotate the floor
+    ax = plt.gca()
+    plt.axvline(floor, color='k', ls=':', alpha=0.7)
+    ymax = ax.get_ylim()[1]
+    plt.text(floor, ymax*0.9, "lower limit = 1", rotation=90, va='top', ha='right', fontsize=11)
+
+    plt.xscale('log')
+    plt.xlabel(_sfr_xlabel(sfr_col))
+    plt.ylabel("Probability density" if density else "Number of galaxies")
+    plt.grid(True, which='both', alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(outpath, dpi=200)
+    plt.close()
+    print(f"Saved: {outpath}")
+
+
 def main(
     phot_fits, bagpipes_fits, galfit_fits,
     filter_name='F444W', phot_idcol='NUMBER', bagpipes_idcol='#ID',
@@ -228,6 +311,25 @@ def main(
     if 'sfr_10myr_50' in table_bagpipes_m.colnames:
         plot_sfr_vs_mass(table_bagpipes_m, psb_mask, sfr_col='sfr_10myr_50',
                          mass_col=mass_col, outpath="sfr_10myr_vs_mass.png", ylog=True)
+        
+        # --- NEW: SFR histograms with floor, mass-complete only ---
+    MASS_COMP = 8.1  # <-- set your completeness limit (log10 M/Msun)
+
+    plot_sfr_hist_with_floor(table_bagpipes_m, psb_mask,
+                             sfr_col='sfr_50',
+                             mass_col=mass_col,
+                             mass_limit=MASS_COMP,
+                             floor=1.0,
+                             outpath="sfr_hist_floor_100Myr.png")
+
+    if 'sfr_10myr_50' in table_bagpipes_m.colnames:
+        plot_sfr_hist_with_floor(table_bagpipes_m, psb_mask,
+                                 sfr_col='sfr_10myr_50',
+                                 mass_col=mass_col,
+                                 mass_limit=MASS_COMP,
+                                 floor=1.0,
+                                 outpath="sfr_hist_floor_10Myr.png")
+
 
 if __name__ == "__main__":
     main(
